@@ -95,13 +95,31 @@ def run_scenario_master(
     unit_penaltycost=1.7,          # kept for compatibility (unused here)
     unit_inventory_holdingCost=0.85,
     service_level = 0.9,
-    
-    # NEW: per-new-location switches (None => backward compatible)
+    # NEW: per-location switches (None => backward compatible)
+    # --- Layer 1 plants (existing) ---
+    isTW=None,
+    isSHA=None,
+    # --- Layer 1/2 crossdocks (existing) ---
+    isATVIE=None,
+    isPLGDN=None,
+    isFRCDG=None,
+    # --- Layer 2 new manufacturing locations (existing) ---
     isHUDTG=None,
     isCZMCT=None,
     isIEILG=None,
     isFIMPF=None,
     isPLZCA=None,
+
+    # NEW: generic switch dicts (lets you add new facilities/crossdocks without editing code)
+    # Example: plant_switches={"TW": True, "SHA": False, "NEWP": True}
+    plant_switches=None,
+    crossdock_switches=None,
+    newloc_switches=None,
+
+    # NEW: allow overriding the superset node lists (useful when you add 2 more plants / more crossdocks)
+    plants_all=None,
+    crossdocks_all=None,
+    new_locs_all=None,
 
     # --- Scenario toggles ---
     suez_canal=False,              # blocks sea on L1
@@ -118,10 +136,17 @@ def run_scenario_master(
     # ======================================================
 
     # Superset of locations (same IDs as your SC1F/SC2F)
-    Plants_all     = ["TW", "SHA"]
-    Crossdocks_all = ["ATVIE", "PLGDN", "FRCDG"]
-    New_Locs_all   = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
-    Dcs_all        = ["PED", "FR6216", "RIX", "GMZ"]
+    # Superset of locations (same IDs as your SC1F/SC2F)
+    # You can override these from outside via plants_all / crossdocks_all / new_locs_all.
+    Plants_all_default     = ["TW", "SHA"]
+    Crossdocks_all_default = ["ATVIE", "PLGDN", "FRCDG"]
+    New_Locs_all_default   = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
+    Dcs_all                = ["PED", "FR6216", "RIX", "GMZ"]
+
+    Plants_all     = Plants_all_default if plants_all is None else list(plants_all)
+    Crossdocks_all = Crossdocks_all_default if crossdocks_all is None else list(crossdocks_all)
+    New_Locs_all   = New_Locs_all_default if new_locs_all is None else list(new_locs_all)
+
 
     # Default demand (same as in SC2F)
     if demand is None:
@@ -278,36 +303,102 @@ def run_scenario_master(
             index=["PED","FR6216","RIX","GMZ"],
             columns=["FLUXC","ALKFM","KSJER","GXEQH","OAHLE","ISNQE","NAAVF"]
         )
-
     # ======================================================
     # 2. ACTIVE SETS & MODES
     # ======================================================
-    
-    # Base selection (existing behavior)
-    New_Locs_base = New_Locs_all if active_new_locs is None else list(active_new_locs)
 
-    # Locations: if user passes a list, we use that; otherwise full set
-    Plants = Plants_all if active_plants is None else list(active_plants)
-    # NEW: flags -> location mapping
-    newloc_flags = {
+    def _apply_switches(base_list, explicit_flags, extra_flags=None):
+        """Apply per-node switches.
+        - If ANY flag is explicitly provided (True/False), keep only nodes with True.
+        - If all flags are None, keep base_list (backward compatible).
+        """
+        flags = dict(explicit_flags or {})
+        if extra_flags:
+            flags.update(extra_flags)
+
+        if flags and any(v is not None for v in flags.values()):
+            selected = {k for k, v in flags.items() if bool(v)}
+            return [x for x in base_list if x in selected]
+        return list(base_list)
+
+    def _fill_missing_dict(d, keys, name="param", fallback=None):
+        """Ensure dict covers all keys.
+        Missing keys are filled with fallback (mean of existing values if fallback is None)."""
+        dd = {} if d is None else dict(d)
+        if fallback is None:
+            fallback = float(np.mean(list(dd.values()))) if len(dd) > 0 else 0.0
+        for k in keys:
+            if k not in dd:
+                dd[k] = fallback
+        return dd
+
+    # Base selection (existing behavior) via active_* lists
+    Plants_base     = Plants_all if active_plants is None else list(active_plants)
+    Crossdocks_base = Crossdocks_all if active_crossdocks is None else list(active_crossdocks)
+    New_Locs_base   = New_Locs_all if active_new_locs is None else list(active_new_locs)
+    Dcs             = Dcs_all if active_dcs is None else list(active_dcs)
+
+    # --- Explicit flags (UI style) ---
+    plant_flags_explicit = {"TW": isTW, "SHA": isSHA}
+    crossdock_flags_explicit = {"ATVIE": isATVIE, "PLGDN": isPLGDN, "FRCDG": isFRCDG}
+    newloc_flags_explicit = {
         "HUDTG": isHUDTG,
         "CZMCT": isCZMCT,
         "IEILG": isIEILG,
         "FIMPF": isFIMPF,
         "PLZCA": isPLZCA,
     }
-    
-    # If any flag is explicitly provided (True/False), use flags as the gate.
-    if any(v is not None for v in newloc_flags.values()):
-        selected = {k for k, v in newloc_flags.items() if bool(v)}
-        New_Locs = [n for n in New_Locs_base if n in selected]
-    else:
-        # Backward compatible: no flags provided => keep old behavior
-        New_Locs = list(New_Locs_base)
-    Crossdocks = Crossdocks_all if active_crossdocks is None else list(active_crossdocks)
-    Dcs = Dcs_all if active_dcs is None else list(active_dcs)
+
+    # --- Apply switches (explicit + dict-based) ---
+    Plants     = _apply_switches(Plants_base, plant_flags_explicit, plant_switches)
+    Crossdocks = _apply_switches(Crossdocks_base, crossdock_flags_explicit, crossdock_switches)
+    New_Locs   = _apply_switches(New_Locs_base, newloc_flags_explicit, newloc_switches)
+
+    # Make sure parameter dicts cover the active sets (if the user adds new nodes)
+    handling_crossdock = _fill_missing_dict(handling_crossdock, Crossdocks, name="handling_crossdock")
+    sourcing_cost = _fill_missing_dict(sourcing_cost, Plants, name="sourcing_cost")
+    co2_prod_kg_per_unit = _fill_missing_dict(co2_prod_kg_per_unit, Plants, name="co2_prod_kg_per_unit")
+    new_loc_capacity = _fill_missing_dict(new_loc_capacity, New_Locs, name="new_loc_capacity")
+    new_loc_openingCost = _fill_missing_dict(new_loc_openingCost, New_Locs, name="new_loc_openingCost")
+    new_loc_operationCost = _fill_missing_dict(new_loc_operationCost, New_Locs, name="new_loc_operationCost")
+    new_loc_CO2 = _fill_missing_dict(new_loc_CO2, New_Locs, name="new_loc_CO2")
+    dc_capacity = _fill_missing_dict(dc_capacity, Dcs, name="dc_capacity")
+    handling_dc = _fill_missing_dict(handling_dc, Dcs, name="handling_dc")
+
+    # --- Ensure distance matrices cover the active node sets ---
+    def _ensure_dist_matrix(mat, idx, cols, name, fallback=None):
+        """Reindex a distance DataFrame to (idx x cols) and fill missing with fallback.
+        fallback defaults to the mean of existing numeric entries (or 10_000 if empty).
+        """
+        if mat is None:
+            base = pd.DataFrame(index=idx, columns=cols, data=np.nan)
+        else:
+            base = mat.copy()
+
+        if fallback is None:
+            try:
+                vals = pd.to_numeric(base.stack(), errors="coerce")
+                fallback = float(vals.mean()) if np.isfinite(vals.mean()) else 10000.0
+            except Exception:
+                fallback = 10000.0
+
+        out = base.reindex(index=idx, columns=cols)
+        out = out.apply(pd.to_numeric, errors="coerce")
+        if out.isna().any().any():
+            if print_results == "YES":
+                missing = int(out.isna().sum().sum())
+                print(f"[WARN] {name} had {missing} missing distances; filled with {fallback}.")
+            out = out.fillna(fallback)
+        return out
+
+    dist1 = _ensure_dist_matrix(dist1, Plants, Crossdocks, "dist1 (Plant->Crossdock)")
+    dist2 = _ensure_dist_matrix(dist2, Crossdocks, Dcs, "dist2 (Crossdock->DC)")
+    dist2_new = _ensure_dist_matrix(dist2_new, New_Locs, Dcs, "dist2_new (NewLoc->DC)")
+    dist3 = _ensure_dist_matrix(dist3, Dcs, Retailers, "dist3 (DC->Retailer)")
 
     # Basic mode defaults
+
+
     ModesL1_default = ["air", "sea"]
     ModesL2_default = ["air", "sea", "road"]
     ModesL3_default = ["air", "sea", "road"]
@@ -684,8 +775,8 @@ def run_scenario_master(
         Total_CO2 <= CO2_base * (1 - CO_2_percentage),
         name="CO2ReductionTarget"
     )
-
-    model.addConstr(quicksum(f2_2_bin[n] for n in New_Locs) == len(New_Locs))
+    if f2_2_bin and len(New_Locs) > 0:
+        model.addConstr(quicksum(f2_2_bin[n] for n in New_Locs) == len(New_Locs), name="ForceOpen_SelectedNewLocs")
 
 
     # Scenario-specific structural constraints

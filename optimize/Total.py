@@ -22,7 +22,11 @@ from sc1_app import run_sc1
 from sc2_app import run_sc2
 from Scenario_Setting_For_SC1F import run_scenario as run_SC1F
 from Scenario_Setting_For_SC2F import run_scenario as run_SC2F
-from MASTER import run_scenario_master  # NEW: fully parametric master model
+# MASTER model import (supports either renaming MASTER.py or keeping a separate MASTER_parametrized.py)
+try:
+    from MASTER_parametrized import run_scenario_master  # fully parametric master model
+except Exception:
+    from MASTER import run_scenario_master  # fallback
 from collections import defaultdict
 
 
@@ -318,18 +322,55 @@ elif mode == "Gamification Mode":
 
     # --- Facility activation ---
     st.markdown("#### Facility activation")
-    
 
-
-
-    plants_all = ["TW", "SHA"]
-    crossdocks_all = ["ATVIE", "PLGDN", "FRCDG"]
+    # Default supersets (keep these aligned with MASTER defaults)
+    plants_default = ["TW", "SHA"]
+    crossdocks_default = ["ATVIE", "PLGDN", "FRCDG"]
     dcs_all = ["PED", "FR6216", "RIX", "GMZ"]
-    new_locs_all = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
-    
+    new_locs_default = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
 
+    # Optional: allow adding new codes from UI without touching code
+    def _parse_codes(s: str):
+        if not s:
+            return []
+        parts = [p.strip() for p in re.split(r"[;,\n\t ]+", s) if p.strip()]
+        # normalize: keep as-is (case sensitive), but drop duplicates preserving order
+        out = []
+        seen = set()
+        for p in parts:
+            if p not in seen:
+                out.append(p)
+                seen.add(p)
+        return out
 
-    
+    with st.expander("➕ Add more facility codes (optional)", expanded=False):
+        st.caption("Use this when you add 2 more plants / more cross-docks in the parametric MASTER model.")
+        extra_plants = st.text_input("Extra plant codes (comma/space separated)", value="", key="gm_extra_plants")
+        extra_crossdocks = st.text_input("Extra cross-dock codes (comma/space separated)", value="", key="gm_extra_crossdocks")
+        extra_new_locs = st.text_input("Extra new production site codes (comma/space separated)", value="", key="gm_extra_new_locs")
+
+    plants_all = plants_default + _parse_codes(extra_plants)
+    crossdocks_all = crossdocks_default + _parse_codes(extra_crossdocks)
+    new_locs_all = new_locs_default + _parse_codes(extra_new_locs)
+
+    # De-duplicate while preserving order
+    def _dedup(seq):
+        out, seen = [], set()
+        for x in seq:
+            if x not in seen:
+                out.append(x)
+                seen.add(x)
+        return out
+
+    plants_all = _dedup(plants_all)
+    crossdocks_all = _dedup(crossdocks_all)
+    new_locs_all = _dedup(new_locs_all)
+
+    # Persist for downstream visuals (pies etc.)
+    st.session_state["gm_plants_all"] = plants_all
+    st.session_state["gm_crossdocks_all"] = crossdocks_all
+    st.session_state["gm_new_locs_all"] = new_locs_all
+
     col_p, col_c, col_d, col_n = st.columns(4)
     with col_p:
         st.caption("Plants")
@@ -356,10 +397,20 @@ elif mode == "Gamification Mode":
             if st.checkbox(n, value=True, key=f"gm_new_{n}")
         ]
 
-    st.session_state["gm_active_new_locs"]   = gm_active_new_locs
-    
-    # Map selections -> MASTER boolean flags (isHUDTG, isCZMCT, ...)
-    gm_newloc_flag_kwargs = {f"is{code}": (code in gm_active_new_locs) for code in new_locs_all}
+    st.session_state["gm_active_new_locs"] = gm_active_new_locs
+
+    # Switch dicts (UI -> MASTER_parametrized)
+    plant_switches = {p: (p in gm_active_plants) for p in plants_all}
+    crossdock_switches = {c: (c in gm_active_crossdocks) for c in crossdocks_all}
+    newloc_switches = {n: (n in gm_active_new_locs) for n in new_locs_all}
+
+    # Persist for Run Optimization
+    st.session_state["gm_plant_switches"] = plant_switches
+    st.session_state["gm_crossdock_switches"] = crossdock_switches
+    st.session_state["gm_newloc_switches"] = newloc_switches
+
+    if (len(gm_active_plants) == 0) and (len(gm_active_new_locs) == 0):
+        st.warning("You turned off all production sources (Plants and New production sites). The model may become infeasible.")
 
     # --- Mode activation ---
     st.markdown("#### Allowed transport modes per layer")
@@ -425,16 +476,44 @@ if st.button("Run Optimization"):
         try:
             # 1) Choose which model to run
             if mode == "Gamification Mode":
-                # Use the fully parametric MASTER model
+                # Use the fully parametric MASTER model (aligned with MASTER_parametrized.py)
+                # Pull latest switch dicts from session_state (set in Gamification Mode UI)
+                plant_switches = st.session_state.get("gm_plant_switches", {})
+                crossdock_switches = st.session_state.get("gm_crossdock_switches", {})
+                newloc_switches = st.session_state.get("gm_newloc_switches", {})
+
+                plants_all = st.session_state.get("gm_plants_all", ["TW", "SHA"])
+                crossdocks_all = st.session_state.get("gm_crossdocks_all", ["ATVIE", "PLGDN", "FRCDG"])
+                new_locs_all = st.session_state.get("gm_new_locs_all", ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"])
+
+                # CO2 price inputs in the UI define only one of these depending on model_choice;
+                # MASTER needs both, so we use sensible fallbacks.
+                co2_existing_price = co2_cost_per_ton if "SC1F" in model_choice else globals().get("co2_cost_per_ton_New", 60.0)
+                co2_new_price = globals().get("co2_cost_per_ton_New", 60.0)
+
                 master_kwargs = dict(
-                    active_plants=gm_active_plants,
-                    active_crossdocks=gm_active_crossdocks,
-                    active_new_locs=gm_active_new_locs,
+                    # Override supersets (so added plants/cross-docks/new sites work without code changes)
+                    plants_all=plants_all,
+                    crossdocks_all=crossdocks_all,
+                    new_locs_all=new_locs_all,
+
+                    # Switch dicts (UI on/off)
+                    plant_switches=plant_switches,
+                    crossdock_switches=crossdock_switches,
+                    newloc_switches=newloc_switches,
+
+                    # DCs are only switched via active list
                     active_dcs=gm_active_dcs,
+
+                    # Modes
                     active_modes_L1=gm_modes_L1,
                     active_modes_L2=gm_modes_L2,
                     active_modes_L3=gm_modes_L3,
+
+                    # Scenario params
                     CO_2_percentage=co2_pct,
+                    co2_cost_per_ton=co2_existing_price,
+                    co2_cost_per_ton_New=co2_new_price,
                     suez_canal=suez_flag,
                     oil_crises=oil_flag,
                     volcano=volcano_flag,
@@ -443,12 +522,6 @@ if st.button("Run Optimization"):
                     service_level=service_level,
                     print_results="NO",
                 )
-
-                # Use the same CO₂ cost inputs as SC1F/SC2F UI
-                if "SC1F" in model_choice:
-                    master_kwargs["co2_cost_per_ton"] = co2_cost_per_ton
-                else:
-                    master_kwargs["co2_cost_per_ton_New"] = co2_cost_per_ton_New
 
                 results, model = run_scenario_master(**master_kwargs)
                 
@@ -459,11 +532,9 @@ if st.button("Run Optimization"):
                     # Always benchmark against SC2F optimal (Allow New Facilities)
                     benchmark_label = "SC2F Optimal (Allow New Facilities)"
                 
-                    # Use the same CO₂ price the user entered
-                    # - SC1F seçiliyse: co2_cost_per_ton var
-                    # - SC2F seçiliyse: co2_cost_per_ton_New var
-                    bench_co2_existing = co2_cost_per_ton if "SC1F" in model_choice else co2_cost_per_ton_New
-                    bench_co2_new      = co2_cost_per_ton_New if "SC2F" in model_choice else co2_cost_per_ton
+                    # Use robust fallbacks (UI defines only one of these depending on model_choice)
+                    bench_co2_existing = co2_cost_per_ton if "SC1F" in model_choice else globals().get("co2_cost_per_ton_New", 60.0)
+                    bench_co2_new      = globals().get("co2_cost_per_ton_New", 60.0)
                 
                     benchmark_results, benchmark_model = run_SC2F(
                         CO_2_percentage=co2_pct,
@@ -745,12 +816,18 @@ if st.button("Run Optimization"):
             prod_sources = {}
             
             # Existing plants
-            for plant in ["TW", "SHA"]:
+            plants_for_pie = (
+                st.session_state.get("gm_plants_all", ["TW", "SHA"]) if mode == "Gamification Mode" else ["TW", "SHA"]
+            )
+            for plant in plants_for_pie:
                 total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
                 prod_sources[plant] = total
             
             # New EU facilities
-            for fac in ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]:
+            new_locs_for_pie = (
+                st.session_state.get("gm_new_locs_all", ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]) if mode == "Gamification Mode" else ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
+            )
+            for fac in new_locs_for_pie:
                 total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                 prod_sources[fac] = total
             
@@ -798,8 +875,11 @@ if st.button("Run Optimization"):
             st.markdown("## 🚚 Cross-dock Outbound Breakdown")
             
             f2_vars = [v for v in model.getVars() if v.VarName.startswith("f2[")]
-            
-            crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+
+
+            crossdocks = (
+                st.session_state.get("gm_crossdocks_all", ["ATVIE", "PLGDN", "FRCDG"]) if mode == "Gamification Mode" else ["ATVIE", "PLGDN", "FRCDG"]
+            )
             crossdock_flows = {}
             
             for cd in crossdocks:
