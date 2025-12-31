@@ -95,6 +95,12 @@ def run_scenario_master(
     unit_penaltycost=1.7,          # kept for compatibility (unused here)
     unit_inventory_holdingCost=0.85,
     service_level = 0.9,
+# --- OPTIONAL: Enforce per-layer transport-mode shares (percentages) ---
+# Provide dicts like {'air': 0.2, 'sea': 0.0, 'road': 0.8} (values will be normalized).
+# You may also provide a tuple/list (air, sea, road).
+mode_share_L1=None,
+mode_share_L2=None,
+mode_share_tol=1e-6,
     # NEW: per-location switches (None => backward compatible)
     # --- Layer 1 plants (existing) ---
     isTW=None,
@@ -407,6 +413,42 @@ def run_scenario_master(
     ModesL2 = ModesL2_default if active_modes_L2 is None else list(active_modes_L2)
     ModesL3 = ModesL3_default if active_modes_L3 is None else list(active_modes_L3)
 
+    # --- Mode-share normalization (NEW) ---
+    def _normalize_mode_share(x):
+        if x is None:
+            return None
+        if isinstance(x, (list, tuple)) and len(x) == 3:
+            d = {"air": float(x[0]), "sea": float(x[1]), "road": float(x[2])}
+        elif isinstance(x, dict):
+            d = {k: float(v) for k, v in x.items()}
+        else:
+            raise ValueError("mode_share must be a dict or a 3-tuple/list (air, sea, road).")
+
+        # Keep canonical keys; missing => 0.0
+        out = {k: float(d.get(k, 0.0)) for k in ["air", "sea", "road"]}
+        # Clamp negatives
+        out = {k: (0.0 if v < 0 else v) for k, v in out.items()}
+
+        s = sum(out.values())
+        if s <= mode_share_tol:
+            # Degenerate (all zeros) => allow only all-zero flows
+            return {k: 0.0 for k in out}
+        return {k: v / s for k, v in out.items()}
+
+    share_L1 = _normalize_mode_share(mode_share_L1)
+    share_L2 = _normalize_mode_share(mode_share_L2)
+
+    # Ensure any positively-requested mode exists in the per-layer mode sets (so vars/constraints exist)
+    if share_L1 is not None:
+        for mo, frac in share_L1.items():
+            if frac > mode_share_tol and mo not in ModesL1:
+                ModesL1.append(mo)
+
+    if share_L2 is not None:
+        for mo, frac in share_L2.items():
+            if frac > mode_share_tol and mo not in ModesL2:
+                ModesL2.append(mo)
+
     # Volcano: block all air → we keep modes in data but disallow flows via constraints
     if volcano:
         if "air" in ModesL1:
@@ -484,6 +526,45 @@ def run_scenario_master(
             lb=0,
             name="f3",   # DC → Retailer
         )
+
+    # ======================================================
+    # 4b. MODE-SHARE CONSTRAINTS (NEW)
+    # ======================================================
+
+    # Layer 1 share constraints: Plant → Crossdock
+    if share_L1 is not None and f1:
+        total_L1 = quicksum(
+            f1[p, c, mo]
+            for p in Plants for c in Crossdocks for mo in ModesL1
+        )
+        for mo, frac in share_L1.items():
+            if mo in ModesL1:
+                flow_m = quicksum(f1[p, c, mo] for p in Plants for c in Crossdocks)
+                model.addConstr(flow_m == frac * total_L1, name=f"ModeShare_L1_{mo}")
+
+    # Layer 2 share constraints: (Crossdock → DC) + (NewLoc → DC)
+    if share_L2 is not None and (f2 or f2_new):
+        total_L2 = 0
+        if f2:
+            total_L2 += quicksum(
+                f2[c, d, mo]
+                for c in Crossdocks for d in Dcs for mo in ModesL2
+            )
+        if f2_new:
+            total_L2 += quicksum(
+                f2_new[n, d, mo]
+                for n in New_Locs for d in Dcs for mo in ModesL2
+            )
+
+        for mo, frac in share_L2.items():
+            if mo in ModesL2:
+                flow_m = 0
+                if f2:
+                    flow_m += quicksum(f2[c, d, mo] for c in Crossdocks for d in Dcs)
+                if f2_new:
+                    flow_m += quicksum(f2_new[n, d, mo] for n in New_Locs for d in Dcs)
+                model.addConstr(flow_m == frac * total_L2, name=f"ModeShare_L2_{mo}")
+
 
     # ======================================================
     # 5. COST & CO2 EXPRESSIONS
@@ -982,6 +1063,8 @@ def run_scenario_master(
         # --- Objective ---
         "Objective_value": model.ObjVal,
         "Status": model.Status,
+        "ModeShare_L1_target": share_L1,
+        "ModeShare_L2_target": share_L2,
     }
 
     return results, model
