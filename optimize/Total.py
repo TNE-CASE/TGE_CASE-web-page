@@ -296,10 +296,10 @@ if mode == "Gamification Mode":
 
 
 
-    plants_all = ["TW", "SHA"]
-    crossdocks_all = ["ATVIE", "PLGDN", "FRCDG"]
-    dcs_all = ["PED", "FR6216", "RIX", "GMZ"]
-    new_locs_all = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
+    plants_all = ["Taiwan", "Shanghai"]
+    crossdocks_all = ["Vienna", "Gdansk", "Paris"]
+    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
     st.info("✅ In Gamification Mode, all Distribution Centers (DCs) are assumed active.")
 
     col_p, col_c, col_n = st.columns(3)
@@ -786,12 +786,12 @@ if st.button("Run Optimization"):
             prod_sources = {}
             
             # Existing plants
-            for plant in ["TW", "SHA"]:
+            for plant in ["Taiwan", "Shanghai"]:
                 total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
                 prod_sources[plant] = total
             
             # New EU facilities
-            for fac in ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]:
+            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
                 total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                 prod_sources[fac] = total
             
@@ -840,7 +840,7 @@ if st.button("Run Optimization"):
             
             f2_vars = [v for v in model.getVars() if v.VarName.startswith("f2[")]
             
-            crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+            crossdocks = ["Vienna", "Gdansk", "Paris"]
             crossdock_flows = {}
             
             for cd in crossdocks:
@@ -1086,12 +1086,12 @@ if st.button("Run Optimization"):
                     prod_sources = {}
 
                     # Existing plants
-                    for plant in ["TW", "SHA"]:
+                    for plant in ["Taiwan", "Shanghai"]:
                         total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
                         prod_sources[plant] = total
 
                     # New EU facilities
-                    for fac in ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]:
+                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
                         total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                         prod_sources[fac] = total
 
@@ -1127,7 +1127,7 @@ if st.button("Run Optimization"):
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
-                    crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+                    crossdocks = ["Vienna", "Gdansk", "Paris"]
                     crossdock_flows = {}
 
                     for cd in crossdocks:
