@@ -103,18 +103,18 @@ mode_share_L2=None,
 mode_share_tol=1e-6,
     # NEW: per-location switches (None => backward compatible)
     # --- Layer 1 plants (existing) ---
-    isTW=None,
-    isSHA=None,
+    isTaiwan=None,
+    isShanghai=None,
     # --- Layer 1/2 crossdocks (existing) ---
-    isATVIE=None,
-    isPLGDN=None,
-    isFRCDG=None,
+    isVienna=None,
+    isGdansk=None,
+    isParis=None,
     # --- Layer 2 new manufacturing locations (existing) ---
-    isHUDTG=None,
-    isCZMCT=None,
-    isIEILG=None,
-    isFIMPF=None,
-    isPLZCA=None,
+    isBudapest=None,
+    isPrague=None,
+    isDublin=None,
+    isHelsinki=None,
+    isWarsaw=None,
 
     # NEW: generic switch dicts (lets you add new facilities/crossdocks without editing code)
     # Example: plant_switches={"TW": True, "SHA": False, "NEWP": True}
@@ -344,14 +344,14 @@ mode_share_tol=1e-6,
     Dcs             = Dcs_all if active_dcs is None else list(active_dcs)
 
     # --- Explicit flags (UI style) ---
-    plant_flags_explicit = {"Taiwan": isTW, "Shanghai": isSHA}
-    crossdock_flags_explicit = {"Vienna": isATVIE, "Gdansk": isPLGDN, "Paris": isFRCDG}
+    plant_flags_explicit = {"Taiwan": isTaiwan, "Shanghai": isShanghai}
+    crossdock_flags_explicit = {"Vienna": isVienna, "Gdansk": isGdansk, "Paris": isParis}
     newloc_flags_explicit = {
-        "Budapest": isHUDTG,
-        "Prague": isCZMCT,
-        "Dublin": isIEILG,
-        "Helsinki": isFIMPF,
-        "Warsaw": isPLZCA,
+        "Budapest": isBudapest,
+        "Prague": isPrague,
+        "Dublin": isDublin,
+        "Helsinki": isHelsinki,
+        "Warsaw": isWarsaw,
     }
 
     # --- Apply switches (explicit + dict-based) ---
