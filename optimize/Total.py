@@ -656,9 +656,9 @@ if (mode == "Gamification Mode") or ("SC2F" in model_choice):
     sourcing_cost_multiplier = st.slider(
         "Sourcing Cost Multiplier (Layer 1)",
         min_value=0.5,
-        max_value=3.0,
+        max_value=4.0,
         value=1.0,
-        step=0.05,
+        step=0.01,
         help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
     )
 else:
