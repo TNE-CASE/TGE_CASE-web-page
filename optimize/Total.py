@@ -17,6 +17,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit.components.v1 as components
 import gurobipy as gp
+import inspect
 
 from sc1_app import run_sc1
 from sc2_app import run_sc2
