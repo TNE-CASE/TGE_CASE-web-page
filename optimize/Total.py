@@ -611,7 +611,7 @@ if st.button("Run Optimization"):
 
             nodes = [
                 ("Plant", 31.23, 121.47, "Shanghai"),
-                ("Plant", 22.32, 114.17, "Hong Kong"),
+                ("Plant", 22.32, 114.17, "Taiwan"),
                 ("Cross-dock", 48.85, 2.35, "Paris"),
                 ("Cross-dock", 50.11, 8.68, "Gdansk"),
                 ("Cross-dock", 37.98, 23.73, "Vienna"),
@@ -960,7 +960,7 @@ if st.button("Run Optimization"):
 
                     nodes = [
                     ("Plant", 31.23, 121.47, "Shanghai"),
-                    ("Plant", 22.32, 114.17, "Hong Kong"),
+                    ("Plant", 22.32, 114.17, "Taiwan"),
                     ("Cross-dock", 48.85, 2.35, "Paris"),
                     ("Cross-dock", 50.11, 8.68, "Gdansk"),
                     ("Cross-dock", 37.98, 23.73, "Vienna"),
@@ -979,11 +979,11 @@ if st.button("Run Optimization"):
 
                     # Add new facilities from fallback model
                     facility_coords = {
-                        "HUDTG": (49.61, 6.13, "Budapest"),
-                        "CZMCT": (44.83, 20.42, "Prague"),
-                        "IEILG": (47.09, 16.37, "Dublin"),
-                        "FIMPF": (50.45, 14.50, "Helsinki"),
-                        "PLZCA": (42.70, 12.65, "Warsaw"),
+                        "Budapest": (49.61, 6.13, "Budapest"),
+                        "Prague": (44.83, 20.42, "Prague"),
+                        "Dublin": (47.09, 16.37, "Dublin"),
+                        "Helsinki": (50.45, 14.50, "Helsinki"),
+                        "Warsaw": (42.70, 12.65, "Warsaw"),
                     }
 
                     for name, (lat, lon, city) in facility_coords.items():
