@@ -39,6 +39,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+# ================================================================
+# SIDEBAR LOGO (add above navigation)
+# ================================================================
+BASE_DIR = os.path.dirname(__file__)
+LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
+    st.sidebar.markdown("---")  # small separator so menu stays clean
+else:
+    st.sidebar.warning("Logo not found: assets/logo.png")
+
 # ================================================================
 # SIDEBAR NAVIGATION WITH COLLAPSIBLE GROUPS
 # ================================================================
