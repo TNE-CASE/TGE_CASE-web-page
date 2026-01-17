@@ -23,17 +23,8 @@ from sc2_app import run_sc2
 from Scenario_Setting_For_SC1F import run_scenario as run_SC1F
 from Scenario_Setting_For_SC2F import run_scenario as run_SC2F
 # MASTER model import (supports mode-share enforcement & parametric versions)
-import inspect
-try:
-    from MASTER_parametrized_with_mode_shares import run_scenario_master
-except Exception:
-    try:
-        from MASTER_with_mode_shares import run_scenario_master
-    except Exception:
-        try:
-            from MASTER_parametrized import run_scenario_master
-        except Exception:
-            from MASTER import run_scenario_master
+
+from MASTER import run_scenario_master
 from collections import defaultdict
 
 
@@ -178,27 +169,27 @@ EPS = 1e-6
 CITY_TO_KEYS = {
     # Plants (model keys)
     "Shanghai": ["SHA"],
-    "Hong Kong": ["TW"],  # if TW plant is represented by Hong Kong on the map
+    "Taiwan": ["TW"],  
 
-    # Cross-docks (example mapping; adjust!)
+    # Cross-docks 
     "Paris": ["FRCDG"],
-    "Frankfurt": ["PLGDN"],
-    "Athens": ["ATVIE"],
+    "Gdansk": ["PLGDN"],
+    "Vienna": ["ATVIE"],
 
-    # DCs (adjust to your actual DC keys!)
-    "Budapest": ["PED"],
-    "Munich": ["FR6216"],
-    "Bern": ["RIX"],
-    "Milan": ["GMZ"],
+    # DCs 
+    "Pardubice": ["PED"],
+    "Lille": ["FR6216"],
+    "Riga": ["RIX"],
+    "LaGomera": ["GMZ"],
 
-    # Retailers (adjust if your model uses different retailer keys)
-    "Copenhagen": ["Copenhagen"],
-    "Dublin": ["Dublin"],
-    "London": ["London"],
-    "Krakow": ["Krakow"],
-    "Lyon": ["Lyon"],
-    "Marseille": ["Marseille"],
-    "Madrid": ["Madrid"],
+    # Retailers 
+    "Cologne": ["FLUXC"],
+    "Antwerp": ["ALKFM"],
+    "Krakow": ["KSJER"],
+    "Kaunas": ["GXEQH"],
+    "Oslo": ["OAHLE"],
+    "Dublin": ["ISNQE"],
+    "Stockholm": ["NAAVF"],
 }
 
 def _parse_inside_brackets(varname: str):
