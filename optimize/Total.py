@@ -169,28 +169,28 @@ EPS = 1e-6
 # Adjust these to match YOUR model naming.
 CITY_TO_KEYS = {
     # Plants (model keys)
-    "Shanghai": ["SHA"],
-    "Taiwan": ["TW"],  
+    "Shanghai": ["Shanghai"],
+    "Taiwan": ["Taiwan"],  
 
     # Cross-docks 
-    "Paris": ["FRCDG"],
-    "Gdansk": ["PLGDN"],
-    "Vienna": ["ATVIE"],
+    "Paris": ["Paris"],
+    "Gdansk": ["Gdansk"],
+    "Vienna": ["Vienna"],
 
     # DCs 
-    "Pardubice": ["PED"],
-    "Lille": ["FR6216"],
-    "Riga": ["RIX"],
-    "LaGomera": ["GMZ"],
+    "Pardubice": ["Pardubice"],
+    "Lille": ["Lille"],
+    "Riga": ["Riga"],
+    "LaGomera": ["LaGomera"],
 
     # Retailers 
-    "Cologne": ["FLUXC"],
-    "Antwerp": ["ALKFM"],
-    "Krakow": ["KSJER"],
-    "Kaunas": ["GXEQH"],
-    "Oslo": ["OAHLE"],
-    "Dublin": ["ISNQE"],
-    "Stockholm": ["NAAVF"],
+    "Cologne": ["Cologne"],
+    "Antwerp": ["Antwerp"],
+    "Krakow": ["Krakow"],
+    "Kaunas": ["Kaunas"],
+    "Oslo": ["Oslo"],
+    "Dublin": ["Dublin"],
+    "Stockholm": ["Stockholm"],
 }
 
 def _parse_inside_brackets(varname: str):
@@ -636,11 +636,11 @@ if st.button("Run Optimization"):
             
             # New facilities (only if active)
             facility_coords = {
-                "HUDTG": (49.61, 6.13, "Budapest"),
-                "CZMCT": (44.83, 20.42, "Prague"),
-                "IEILG": (47.09, 16.37, "Dublin"),
-                "FIMPF": (50.45, 14.50, "Helsinki"),
-                "PLZCA": (42.70, 12.65, "Warsaw"),
+                "Budapest": (49.61, 6.13, "Budapest"),
+                "Prague": (44.83, 20.42, "Prague"),
+                "Dublin": (47.09, 16.37, "Dublin"),
+                "Helsinki": (50.45, 14.50, "Helsinki"),
+                "Warsaw": (42.70, 12.65, "Warsaw"),
             }
             
             for name, (lat, lon, city) in facility_coords.items():
