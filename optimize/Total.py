@@ -234,6 +234,195 @@ def city_is_active(city: str, key_thr: dict) -> bool:
 
 
 # ------------------------------------------------------------
+# Helpers (NEW): transport flow totals by mode + cost/emission charts
+# ------------------------------------------------------------
+
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return float(default)
+
+
+def sum_flows_by_mode_model(model, prefix: str):
+    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from a Gurobi model."""
+    totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    if model is None:
+        return totals
+
+    for v in model.getVars():
+        n = getattr(v, "VarName", "")
+        if not n.startswith(prefix + "["):
+            continue
+        parts = _parse_inside_brackets(n)
+        if not parts or len(parts) < 3:
+            continue
+        mode = str(parts[-1]).lower()
+        if mode in totals:
+            totals[mode] += _safe_float(getattr(v, "X", 0.0))
+
+    return totals
+
+
+def display_layer_summary_model(model, title: str, prefix: str, include_road: bool = True):
+    totals = sum_flows_by_mode_model(model, prefix)
+    st.markdown(f"### {title}")
+    cols = st.columns(3 if include_road else 2)
+    cols[0].metric("🚢 Sea", f"{totals['sea']:,.0f} units")
+    cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
+    if include_road:
+        cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
+
+    if sum(totals.values()) <= EPS:
+        st.info("No transport activity recorded for this layer.")
+    st.markdown("---")
+
+
+def render_transport_flows_by_mode(model):
+    st.markdown("## 🚚 Transport Flows by Mode")
+    display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
+    display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
+    display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
+    display_layer_summary_model(model, "Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
+
+
+def render_cost_emission_distribution(results: dict):
+    """Replicates the SC1/SC2-style Cost & Emission Distribution charts for optimization outputs."""
+    st.markdown("## 💰 Cost and 🌿 Emission Distribution")
+
+    col1, col2 = st.columns(2)
+
+    # --- Cost Distribution ---
+    with col1:
+        st.subheader("Cost Distribution")
+
+        transport_cost = (
+            _safe_float(results.get("Transport_L1", 0))
+            + _safe_float(results.get("Transport_L2", 0))
+            + _safe_float(results.get("Transport_L2_new", results.get("Transport_L2_new", 0)))
+            + _safe_float(results.get("Transport_L3", 0))
+        )
+        if transport_cost <= 0 and "Transportation Cost" in results:
+            transport_cost = _safe_float(results.get("Transportation Cost", 0))
+
+        sourcing_handling_cost = (
+            _safe_float(results.get("Sourcing_L1", 0))
+            + _safe_float(results.get("Handling_L2_total", 0))
+            + _safe_float(results.get("Handling_L3", 0))
+        )
+        if sourcing_handling_cost <= 0 and "Sourcing/Handling Cost" in results:
+            sourcing_handling_cost = _safe_float(results.get("Sourcing/Handling Cost", 0))
+
+        co2_cost_production = (
+            _safe_float(results.get("CO2_Manufacturing_State1", 0))
+            + _safe_float(results.get("CO2_Cost_L2_2", 0))
+        )
+        if co2_cost_production <= 0:
+            co2_cost_production = _safe_float(results.get("CO2 Cost in Production", results.get("CO2_Cost_in_Production", 0)))
+
+        inventory_cost = (
+            _safe_float(results.get("Inventory_L1", 0))
+            + _safe_float(results.get("Inventory_L2", 0))
+            + _safe_float(results.get("Inventory_L2_new", 0))
+            + _safe_float(results.get("Inventory_L3", 0))
+        )
+        if inventory_cost <= 0 and "Transit Inventory Cost" in results:
+            inventory_cost = _safe_float(results.get("Transit Inventory Cost", 0))
+
+        cost_parts = {
+            "Transportation Cost": transport_cost,
+            "Sourcing/Handling Cost": sourcing_handling_cost,
+            "CO₂ Cost in Production": co2_cost_production,
+            "Inventory Cost": inventory_cost,
+        }
+
+        df_cost_dist = pd.DataFrame({
+            "Category": list(cost_parts.keys()),
+            "Value": list(cost_parts.values()),
+        })
+
+        fig_cost = px.bar(
+            df_cost_dist,
+            x="Category",
+            y="Value",
+            text="Value",
+            color="Category",
+            color_discrete_sequence=["#A7C7E7", "#B0B0B0", "#F8C471", "#5D6D7E"],
+        )
+
+        fig_cost.update_traces(
+            texttemplate="%{text:,.0f}",
+            textposition="outside",
+        )
+        fig_cost.update_layout(
+            template="plotly_white",
+            showlegend=False,
+            xaxis_tickangle=-35,
+            yaxis_title="€",
+            height=400,
+            yaxis_tickformat=",",
+        )
+
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    # --- Emission Distribution ---
+    with col2:
+        st.subheader("Emission Distribution")
+
+        e_air = _safe_float(results.get("E_air", results.get("E_Air", 0)))
+        e_sea = _safe_float(results.get("E_sea", results.get("E_Sea", 0)))
+        e_road = _safe_float(results.get("E_road", results.get("E_Road", 0)))
+        e_last = _safe_float(results.get("E_lastmile", results.get("E_Last-mile", results.get("E_last_mile", 0))))
+        e_total = _safe_float(results.get("CO2_Total", results.get("Total Emissions", 0)))
+
+        e_prod = _safe_float(results.get("E_production", results.get("E_Production", 0)))
+        if e_prod <= 0 and e_total > 0:
+            e_prod = max(e_total - e_air - e_sea - e_road - e_last, 0.0)
+
+        total_transport = e_air + e_sea + e_road
+
+        emission_data = {
+            "Production": e_prod,
+            "Last-mile": e_last,
+            "Air": e_air,
+            "Sea": e_sea,
+            "Road": e_road,
+            "Total Transport": total_transport,
+        }
+
+        df_emission = pd.DataFrame({
+            "Source": list(emission_data.keys()),
+            "Emission (tons)": list(emission_data.values()),
+        })
+
+        fig_emission = px.bar(
+            df_emission,
+            x="Source",
+            y="Emission (tons)",
+            text="Emission (tons)",
+            color="Source",
+            color_discrete_sequence=["#4B8A08", "#2E8B57", "#808080", "#FFD700", "#90EE90", "#000000"],
+        )
+
+        fig_emission.update_traces(
+            texttemplate="%{text:,.2f}",
+            textposition="outside",
+            marker_line_color="black",
+            marker_line_width=0.5,
+        )
+
+        fig_emission.update_layout(
+            template="plotly_white",
+            showlegend=False,
+            xaxis_tickangle=-35,
+            yaxis_title="Tons of CO₂",
+            height=400,
+            yaxis_tickformat=",",
+        )
+
+        st.plotly_chart(fig_emission, use_container_width=True)
+
+# ------------------------------------------------------------
 # Mode selection (Normal vs Gamification)
 # ------------------------------------------------------------
 mode = st.radio("Select mode:", ["Normal Mode", "Gamification Mode"])
@@ -448,7 +637,7 @@ co2_cost_per_ton_New = 60.0
 if "SC1F" in model_choice:
     co2_cost_per_ton = positive_input("CO₂ Cost per ton (€)", 37.5)
 else:
-    co2_cost_per_ton_New = positive_input("CO₂ Cost per ton (New Facility)", 60)
+    co2_cost_per_ton_New = positive_input("CO₂ Cost per ton (New Facility)", 60.0)
 # ------------------------------------------------------------
 # RUN OPTIMIZATION
 # ------------------------------------------------------------
@@ -503,12 +692,10 @@ if st.button("Run Optimization"):
                     # Use the same CO₂ price the user entered
                     # - SC1F seçiliyse: co2_cost_per_ton var
                     # - SC2F seçiliyse: co2_cost_per_ton_New var
-                    bench_co2_existing = co2_cost_per_ton if "SC1F" in model_choice else co2_cost_per_ton_New
                     bench_co2_new      = co2_cost_per_ton_New if "SC2F" in model_choice else co2_cost_per_ton
                 
                     benchmark_results, benchmark_model = run_SC2F(
                         CO_2_percentage=co2_pct,
-                        co2_cost_per_ton=bench_co2_existing,
                         co2_cost_per_ton_New=bench_co2_new,
                         suez_canal=suez_flag,
                         oil_crises=oil_flag,
@@ -877,6 +1064,17 @@ if st.button("Run Optimization"):
                 st.dataframe(df_crossdock.round(2), use_container_width=True)
 
 
+            # ================================================================
+            # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
+            # ================================================================
+            render_transport_flows_by_mode(model)
+
+            # ================================================================
+            # 💰🌿 Cost & Emission Distribution (match SC1/SC2 apps)
+            # ================================================================
+            render_cost_emission_distribution(results)
+
+
         except Exception as e:
             # --------------------------------------------------
             # PRIMARY MODEL FAILED
@@ -1156,6 +1354,16 @@ if st.button("Run Optimization"):
 
                         st.plotly_chart(fig_crossdock, use_container_width=True)
                         st.dataframe(df_crossdock.round(2), use_container_width=True)
+
+                    # ================================================================
+                    # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
+                    # ================================================================
+                    render_transport_flows_by_mode(model_uns)
+
+                    # ================================================================
+                    # 💰🌿 Cost & Emission Distribution (match SC1/SC2 apps)
+                    # ================================================================
+                    render_cost_emission_distribution(results_uns)
 
                 except Exception as e2:
                     st.error(f"❌ Fallback model also failed: {e2}")
