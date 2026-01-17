@@ -612,19 +612,19 @@ if st.button("Run Optimization"):
                 ("Plant", 31.23, 121.47, "Shanghai"),
                 ("Plant", 22.32, 114.17, "Hong Kong"),
                 ("Cross-dock", 48.85, 2.35, "Paris"),
-                ("Cross-dock", 50.11, 8.68, "Frankfurt"),
-                ("Cross-dock", 37.98, 23.73, "Athens"),
-                ("DC", 47.50, 19.04, "Budapest"),
-                ("DC", 48.14, 11.58, "Munich"),
-                ("DC", 46.95, 7.44, "Bern"),
-                ("DC", 45.46, 9.19, "Milan"),
-                ("Retail", 55.67, 12.57, "Copenhagen"),
-                ("Retail", 53.35, -6.26, "Dublin"),
-                ("Retail", 51.50, -0.12, "London"),
-                ("Retail", 49.82, 19.08, "Krakow"),
-                ("Retail", 45.76, 4.83, "Lyon"),
-                ("Retail", 43.30, 5.37, "Marseille"),
-                ("Retail", 40.42, -3.70, "Madrid"),
+                ("Cross-dock", 50.11, 8.68, "Gdansk"),
+                ("Cross-dock", 37.98, 23.73, "Vienna"),
+                ("DC", 47.50, 19.04, "Pardubice"),
+                ("DC", 48.14, 11.58, "Lille"),
+                ("DC", 46.95, 7.44, "Riga"),
+                ("DC", 45.46, 9.19, "LaGomera"),
+                ("Retail", 55.67, 12.57, "Cologne"),
+                ("Retail", 53.35, -6.26, "Antwerp"),
+                ("Retail", 51.50, -0.12, "Krakow"),
+                ("Retail", 49.82, 19.08, "Kaunas"),
+                ("Retail", 45.76, 4.83, "Oslo"),
+                ("Retail", 43.30, 5.37, "Dublin"),
+                ("Retail", 40.42, -3.70, "Stockholm"),
             ]
 
             locations = pd.DataFrame(nodes, columns=["Type", "Lat", "Lon", "City"])
@@ -635,11 +635,11 @@ if st.button("Run Optimization"):
             
             # New facilities (only if active)
             facility_coords = {
-                "HUDTG": (49.61, 6.13, "Luxembourg"),
-                "CZMCT": (44.83, 20.42, "Belgrade"),
-                "IEILG": (47.09, 16.37, "Graz"),
-                "FIMPF": (50.45, 14.50, "Prague"),
-                "PLZCA": (42.70, 12.65, "Viterbo"),
+                "HUDTG": (49.61, 6.13, "Budapest"),
+                "CZMCT": (44.83, 20.42, "Prague"),
+                "IEILG": (47.09, 16.37, "Dublin"),
+                "FIMPF": (50.45, 14.50, "Helsinki"),
+                "PLZCA": (42.70, 12.65, "Warsaw"),
             }
             
             for name, (lat, lon, city) in facility_coords.items():
@@ -958,31 +958,31 @@ if st.button("Run Optimization"):
                     st.markdown("## 🌍 Global Supply Chain Map (Fallback Model)")
 
                     nodes = [
-                        ("Plant", 31.23, 121.47, "Shanghai"),
-                        ("Plant", 22.32, 114.17, "Hong Kong"),
-                        ("Cross-dock", 48.85, 2.35, "Paris"),
-                        ("Cross-dock", 50.11, 8.68, "Frankfurt"),
-                        ("Cross-dock", 37.98, 23.73, "Athens"),
-                        ("DC", 47.50, 19.04, "Budapest"),
-                        ("DC", 48.14, 11.58, "Munich"),
-                        ("DC", 46.95, 7.44, "Bern"),
-                        ("DC", 45.46, 9.19, "Milan"),
-                        ("Retail", 55.67, 12.57, "Copenhagen"),
-                        ("Retail", 53.35, -6.26, "Dublin"),
-                        ("Retail", 51.50, -0.12, "London"),
-                        ("Retail", 49.82, 19.08, "Krakow"),
-                        ("Retail", 45.76, 4.83, "Lyon"),
-                        ("Retail", 43.30, 5.37, "Marseille"),
-                        ("Retail", 40.42, -3.70, "Madrid"),
+                    ("Plant", 31.23, 121.47, "Shanghai"),
+                    ("Plant", 22.32, 114.17, "Hong Kong"),
+                    ("Cross-dock", 48.85, 2.35, "Paris"),
+                    ("Cross-dock", 50.11, 8.68, "Gdansk"),
+                    ("Cross-dock", 37.98, 23.73, "Vienna"),
+                    ("DC", 47.50, 19.04, "Pardubice"),
+                    ("DC", 48.14, 11.58, "Lille"),
+                    ("DC", 46.95, 7.44, "Riga"),
+                    ("DC", 45.46, 9.19, "LaGomera"),
+                    ("Retail", 55.67, 12.57, "Cologne"),
+                    ("Retail", 53.35, -6.26, "Antwerp"),
+                    ("Retail", 51.50, -0.12, "Krakow"),
+                    ("Retail", 49.82, 19.08, "Kaunas"),
+                    ("Retail", 45.76, 4.83, "Oslo"),
+                    ("Retail", 43.30, 5.37, "Dublin"),
+                    ("Retail", 40.42, -3.70, "Stockholm"),
                     ]
 
                     # Add new facilities from fallback model
                     facility_coords = {
-                        "HUDTG": (49.61, 6.13, "Luxembourg"),
-                        "CZMCT": (44.83, 20.42, "Belgrade"),
-                        "IEILG": (47.09, 16.37, "Graz"),
-                        "FIMPF": (50.45, 14.50, "Prague"),
-                        "PLZCA": (42.70, 12.65, "Viterbo"),
+                        "HUDTG": (49.61, 6.13, "Budapest"),
+                        "CZMCT": (44.83, 20.42, "Prague"),
+                        "IEILG": (47.09, 16.37, "Dublin"),
+                        "FIMPF": (50.45, 14.50, "Helsinki"),
+                        "PLZCA": (42.70, 12.65, "Warsaw"),
                     }
 
                     for name, (lat, lon, city) in facility_coords.items():
