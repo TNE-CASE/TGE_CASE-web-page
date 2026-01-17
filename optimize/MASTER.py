@@ -189,13 +189,13 @@ mode_share_tol=1e-6,
     # New location parameters
     if new_loc_capacity is None:
         new_loc_capacity = {
-            "HUDTG": 37000, "CZMCT": 45500, "IEILG": 46000,
-            "FIMPF": 35000, "PLZCA": 16500,
+            "HUDTG": 37000, "CZMCT": 35500, "IEILG": 46000,
+            "FIMPF": 35000, "PLZCA": 26500,
         }
     if new_loc_openingCost is None:
         new_loc_openingCost = {
-            "HUDTG": 7.4e6, "CZMCT": 9.1e6, "IEILG": 9.2e6,
-            "FIMPF": 7e6,   "PLZCA": 3.3e6,
+            "HUDTG": 2.775e6, "CZMCT": 2.6625e6, "IEILG": 3.45e6,
+            "FIMPF": 2.625e6,   "PLZCA": 1.9875e6,
         }
     if new_loc_operationCost is None:
         new_loc_operationCost = {
@@ -264,7 +264,7 @@ mode_share_tol=1e-6,
     
     
     data["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521] # may turn back to above calculation, just keeping hardcoded version for now
-    # Shortcut: per-mode variable transport cost in €/kg-km
+    
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
 
     # Distances (km); where missing, we use simple placeholders
