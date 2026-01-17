@@ -479,7 +479,7 @@ mode_share_tol=1e-6,
 
     # Simple per-unit variable cost at new locations (derived from capacity)
     new_loc_unitCost = {
-        loc: (1.0 / new_loc_capacity[loc]) * 100000.0
+        loc: (1.0 / new_loc_capacity[loc]) * 90000.0
         for loc in new_loc_capacity
     }
 
