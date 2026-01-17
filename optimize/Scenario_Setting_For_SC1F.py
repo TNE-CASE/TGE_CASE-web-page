@@ -63,47 +63,47 @@ def run_scenario(
     # =====================================================
     if demand is None:
         demand = {
-            "FLUXC": 17000, "ALKFM": 9000, "KSJER": 13000,
-            "GXEQH": 19000, "OAHLE": 15000, "ISNQE": 20000, "NAAVF": 18000
+            "Cologne": 17000, "Antwerp": 9000, "Krakow": 13000,
+            "Kaunas": 19000, "Oslo": 15000, "Dublin": 20000, "Stockholm": 18000
         }
     
     if dc_capacity is None:
-        dc_capacity = {"PED": 45000, "FR6216": 150000, "RIX": 75000, "GMZ": 100000}
+        dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
     
     if handling_dc is None:
-        handling_dc = {"PED": 4.768269231, "FR6216": 5.675923077, "RIX": 4.426038462, "GMZ": 7.0865}
+        handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077, "Riga": 4.426038462, "LaGomera": 7.0865}
     
     if handling_crossdock is None:
-        handling_crossdock = {"ATVIE": 6.533884615, "PLGDN": 4.302269231, "FRCDG": 5.675923077}
+        handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
     
     if sourcing_cost is None:
-        sourcing_cost = {"TW": 3.343692308, "SHA": 3.423384615}
+        sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
     
     if co2_prod_kg_per_unit is None:
-        co2_prod_kg_per_unit = {"TW": 6.3, "SHA": 9.8}
+        co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
     
     if new_loc_capacity is None:
         new_loc_capacity = {
-            "HUDTG": 37000, "CZMCT": 45500, "IEILG": 46000,
-            "FIMPF": 35000, "PLZCA": 16500
+            "Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+            "Helsinki": 35000, "Warsaw": 26500,
         }
     
     if new_loc_openingCost is None:
         new_loc_openingCost = {
-            "HUDTG": 7.4e6, "CZMCT": 9.1e6, "IEILG": 9.2e6,
-            "FIMPF": 7e6, "PLZCA": 3.3e6
+            "Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+            "Helsinki": 2.625e6,   "Warsaw": 1.9875e6,
         }
     
     if new_loc_operationCost is None:
         new_loc_operationCost = {
-            "HUDTG": 250000, "CZMCT": 305000, "IEILG": 450000,
-            "FIMPF": 420000, "PLZCA": 412500
+            "Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+            "Helsinki": 420000, "Warsaw": 412500
         }
     
     if new_loc_CO2 is None:
         new_loc_CO2 = {
-            "HUDTG": 3.2, "CZMCT": 2.8, "IEILG": 4.6,
-            "FIMPF": 5.8, "PLZCA": 6.2
+            "Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6,
+            "Helsinki": 5.8, "Warsaw": 6.2
         }
     
     if co2_emission_factor is None:
@@ -141,10 +141,10 @@ def run_scenario(
     
     Modes = ["air", "sea", "road"]
     ModesL1 = ["air", "sea"]
-    Plants = ["TW", "SHA"]
-    Crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
-    New_Locs = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
-    Dcs = ["PED", "FR6216", "RIX", "GMZ"]
+    Plants = ["Taiwan", "Shanghai"]
+    Crossdocks = ["Vienna", "Gdansk", "Paris"]
+    New_Locs = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+    Dcs = ["Pardubice", "Lille", "Riga", "LaGomera"]
     Retailers = list(demand.keys())
     product_weight_ton = product_weight / 1000.0
     
@@ -171,16 +171,16 @@ def run_scenario(
     dist1 = pd.DataFrame(
         [[8997.94617146616, 8558.96520835034, 9812.38584027454],
          [8468.71339377354, 7993.62774285959, 9240.26233801075]],
-        index=["TW","SHA"],
-        columns=["ATVIE","PLGDN","FRCDG"]
+        index=["Taiwan","Shanghai"],
+        columns=["Vienna","Gdansk","Paris"]
     )
     
     dist2 = pd.DataFrame(
         [[220.423995674989, 1019.43140587827, 1098.71652257982, 1262.62587924823],
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
-        index=["ATVIE","PLGDN","FRCDG"],
-        columns=["PED","FR6216","RIX","GMZ"]
+        index=["Vienna","Gdansk","Paris"],
+        columns=["Pardubice","Lille","Riga","LaGomera"]
     )
     
     dist2_2 = pd.DataFrame([[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -188,8 +188,8 @@ def run_scenario(
                             [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
                             [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
                             [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-                           index=["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"],
-                           columns = ["PED","FR6216","RIX","GMZ"]
+                           index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+                           columns = ["Pardubice","Lille","Riga","LaGomera"]
                            )
     
     dist3 = pd.DataFrame(
@@ -197,8 +197,8 @@ def run_scenario(
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["PED","FR6216","RIX","GMZ"],
-        columns=["FLUXC","ALKFM","KSJER","GXEQH","OAHLE","ISNQE","NAAVF"]
+        index=["Pardubice","Lille","Riga","LaGomera"],
+        columns=["Cologne","Antwerp","Krakow","Kaunas","Oslo","Dublin","Stockholm"]
     )
     
     # -----------------------------
@@ -598,8 +598,8 @@ def simulate_scenarios_full():
 
     # --- Base demand (for scaling) ---
     base_demand = {
-        "FLUXC": 17000, "ALKFM": 9000, "KSJER": 13000,
-        "GXEQH": 19000, "OAHLE": 15000, "ISNQE": 20000, "NAAVF": 18000
+        "Cologne": 17000, "Antwerp": 9000, "Krakow": 13000,
+            "Kaunas": 19000, "Oslo": 15000, "Dublin": 20000, "Stockholm": 18000
     }
 
     # Prepare Excel writer for multiple sheets
@@ -702,18 +702,18 @@ def simulate_scenarios_full():
                 record.get("Inventory_L1", 0)
                 + record.get("Inventory_L2", 0)
                 + record.get("Inventory_L3", 0),                 # Transit Inventory Cost
-                record.get("f1[TW,ATVIE,air]", 0)
-                + record.get("f1[TW,PLGDN,air]", 0)
-                + record.get("f1[TW,FRCDG,air]", 0)
-                +record.get("f1[TW,ATVIE,sea]", 0)
-                + record.get("f1[TW,PLGDN,sea]", 0)
-                + record.get("f1[TW,FRCDG,sea]", 0),             # TW Outbound
-                record.get("f1[SHA,ATVIE,air]", 0)
-                + record.get("f1[SHA,PLGDN,air]", 0)
-                + record.get("f1[SHA,FRCDG,air]", 0)
-                +record.get("f1[SHA,ATVIE,sea]", 0)
-                + record.get("f1[SHA,PLGDN,sea]", 0)
-                + record.get("f1[SHA,FRCDG,sea]", 0),            # SHA Outbound
+                record.get("f1[Taiwan,Vienna,air]", 0)
+                + record.get("f1[Taiwan,Gdansk,air]", 0)
+                + record.get("f1[Taiwan,Paris,air]", 0)
+                +record.get("f1[Taiwan,Vienna,sea]", 0)
+                + record.get("f1[Taiwan,Gdansk,sea]", 0)
+                + record.get("f1[Taiwan,Paris,sea]", 0),             # TW Outbound
+                record.get("f1[Shanghai,Vienna,air]", 0)
+                + record.get("f1[Shanghai,Gdansk,air]", 0)
+                + record.get("f1[Shanghai,Paris,air]", 0)
+                +record.get("f1[Shanghai,Vienna,sea]", 0)
+                + record.get("f1[Shanghai,Gdansk,sea]", 0)
+                + record.get("f1[Shanghai,Paris,sea]", 0),            # SHA Outbound
                 
                 sum(v for k, v in record.items() if "f1" in k and "air"  in k),  # Layer1Air (units)
                 sum(v for k, v in record.items() if "f1" in k and "sea"  in k),  # Layer1Sea

@@ -273,7 +273,7 @@ mode_share_tol=1e-6,
             [[8997.94617146616, 8558.96520835034, 9812.38584027454],
              [8468.71339377354, 7993.62774285959, 9240.26233801075]],
             index=["Taiwan", "Shanghai"],
-            columns=["Vienna", "Gdansk", "Paris"],
+            columns=["Vienna", "Gdansk", "Paris"]
         )
 
     # Crossdock -> DC (3 x 4)
@@ -283,7 +283,7 @@ mode_share_tol=1e-6,
              [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
              [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
             index=["Vienna", "Gdansk", "Paris"],
-            columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+            columns=["Pardubice", "Lille", "Riga", "LaGomera"]
         )
 
     # NewLoc -> DC (5 x 4)
@@ -295,7 +295,7 @@ mode_share_tol=1e-6,
              [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
              [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
             index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-            columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+            columns=["Pardubice", "Lille", "Riga", "LaGomera"]
         )
 
     # DC -> Retailer (4 x 7) — placeholder; feel free to overwrite with true distances
