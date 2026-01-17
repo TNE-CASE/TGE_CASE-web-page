@@ -165,12 +165,17 @@ def positive_input(label, default):
         return default
 
 
-def run_master_filtered(master_kwargs: dict):
-    """Call run_scenario_master with only the kwargs supported by the imported MASTER variant."""
-    sig = inspect.signature(run_scenario_master)
+def run_filtered(func, kwargs: dict):
+    """Call a scenario function with only the kwargs it supports (signature-safe)."""
+    sig = inspect.signature(func)
     allowed = set(sig.parameters.keys())
-    filtered = {k: v for k, v in master_kwargs.items() if k in allowed}
-    return run_scenario_master(**filtered)
+    filtered = {k: v for k, v in kwargs.items() if k in allowed}
+    return func(**filtered)
+
+
+def run_master_filtered(master_kwargs: dict):
+    """Backward-compatible alias for MASTER."""
+    return run_filtered(run_scenario_master, master_kwargs)
 
     
 # ------------------------------------------------------------
@@ -636,7 +641,19 @@ if mode == "Gamification Mode":
 st.subheader("📊 Scenario Parameters")
 
 co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
-service_level = positive_input("Service Level", 0.9)
+sourcing_cost_multiplier = st.slider(
+    "Sourcing Cost Multiplier (Layer 1)",
+    min_value=0.5,
+    max_value=3.0,
+    value=1.0,
+    step=0.05,
+    help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
+)
+# Keep service level fixed (not exposed in the UI)
+SERVICE_LEVEL_FIXED = 0.9
+# Base sourcing costs (same as MASTER defaults)
+BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
 model_choice = st.selectbox(
     "Optimization model:",
@@ -686,7 +703,8 @@ if st.button("Run Optimization"):
                     volcano=volcano_flag,
                     trade_war=trade_flag,
                     tariff_rate=tariff_rate_used,
-                    service_level=service_level,
+                    sourcing_cost=scaled_sourcing_cost,
+                    service_level=SERVICE_LEVEL_FIXED,
                     print_results="NO",
                 )
 
@@ -707,7 +725,7 @@ if st.button("Run Optimization"):
                     # - SC2F seçiliyse: co2_cost_per_ton_New var
                     bench_co2_new      = co2_cost_per_ton_New if "SC2F" in model_choice else co2_cost_per_ton
                 
-                    benchmark_results, benchmark_model = run_SC2F(
+                    bench_kwargs = dict(
                         CO_2_percentage=co2_pct,
                         co2_cost_per_ton_New=bench_co2_new,
                         suez_canal=suez_flag,
@@ -715,9 +733,12 @@ if st.button("Run Optimization"):
                         volcano=volcano_flag,
                         trade_war=trade_flag,
                         tariff_rate=tariff_rate_used,
+                        sourcing_cost=scaled_sourcing_cost,
                         print_results="NO",
-                        service_level=service_level,
+                        service_level=SERVICE_LEVEL_FIXED,
                     )
+
+                    benchmark_results, benchmark_model = run_filtered(run_SC2F, bench_kwargs)
                 
                 except Exception as _bench_e:
                     benchmark_results = None
@@ -730,7 +751,7 @@ if st.button("Run Optimization"):
 
             elif "SC1F" in model_choice:
                 # Existing facilities only
-                results, model = run_SC1F(
+                sc1_kwargs = dict(
                     CO_2_percentage=co2_pct,
                     co2_cost_per_ton=co2_cost_per_ton,
                     suez_canal=suez_flag,
@@ -738,12 +759,14 @@ if st.button("Run Optimization"):
                     volcano=volcano_flag,
                     trade_war=trade_flag,
                     tariff_rate=tariff_rate_used,
+                    sourcing_cost=scaled_sourcing_cost,
                     print_results="NO",
-                    service_level=service_level,
+                    service_level=SERVICE_LEVEL_FIXED,
                 )
+                results, model = run_filtered(run_SC1F, sc1_kwargs)
             else:
                 # Allow new EU facilities (SC2F)
-                results, model = run_SC2F(
+                sc2_kwargs = dict(
                     CO_2_percentage=co2_pct,
                     co2_cost_per_ton_New=co2_cost_per_ton_New,
                     suez_canal=suez_flag,
@@ -751,9 +774,11 @@ if st.button("Run Optimization"):
                     volcano=volcano_flag,
                     trade_war=trade_flag,
                     tariff_rate=tariff_rate_used,
+                    sourcing_cost=scaled_sourcing_cost,
                     print_results="NO",
-                    service_level=service_level,
+                    service_level=SERVICE_LEVEL_FIXED,
                 )
+                results, model = run_filtered(run_SC2F, sc2_kwargs)
 
 
             st.success("Optimization complete! ✅")
