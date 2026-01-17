@@ -159,7 +159,7 @@ def run_scenario(
         for loc in new_loc_openingCost
     }
     
-    new_loc_unitCost = {loc: (1 / cap) * 100000 for loc, cap in new_loc_capacity.items()}
+    new_loc_unitCost = {loc: (1 / cap) * 00000 for loc, cap in new_loc_capacity.items()}
     
     print(df)
     print(df["LT (days)"])
