@@ -641,24 +641,44 @@ if mode == "Gamification Mode":
 st.subheader("📊 Scenario Parameters")
 
 co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
-sourcing_cost_multiplier = st.slider(
-    "Sourcing Cost Multiplier (Layer 1)",
-    min_value=0.5,
-    max_value=3.0,
-    value=1.0,
-    step=0.05,
-    help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
-)
-# Keep service level fixed (not exposed in the UI)
-SERVICE_LEVEL_FIXED = 0.9
-# Base sourcing costs (same as MASTER defaults)
-BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
-scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
 model_choice = st.selectbox(
     "Optimization model:",
     ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
 )
+
+# Base sourcing costs (same as MASTER defaults)
+BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+
+# Expose sourcing-cost multiplier only for SC2F (and for Gamification Mode / MASTER).
+# For SC1F in Normal Mode, keep the old behavior (no multiplier UI).
+if (mode == "Gamification Mode") or ("SC2F" in model_choice):
+    sourcing_cost_multiplier = st.slider(
+        "Sourcing Cost Multiplier (Layer 1)",
+        min_value=0.5,
+        max_value=3.0,
+        value=1.0,
+        step=0.05,
+        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
+    )
+else:
+    sourcing_cost_multiplier = 1.0
+
+scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
+
+# Service level: keep old UI for SC1F only (Normal Mode).
+# For SC2F and Gamification Mode, it is fixed (not shown).
+if ("SC1F" in model_choice) and (mode != "Gamification Mode"):
+    service_level = st.slider(
+        "Service Level",
+        min_value=0.50,
+        max_value=0.99,
+        value=0.90,
+        step=0.01,
+        help="Required service level for SC1F (kept as in the original UI).",
+    )
+else:
+    service_level = 0.90
 
 # Keep both defined (MASTER uses both; UI edits the relevant one)
 co2_cost_per_ton = 37.5
@@ -704,7 +724,7 @@ if st.button("Run Optimization"):
                     trade_war=trade_flag,
                     tariff_rate=tariff_rate_used,
                     sourcing_cost=scaled_sourcing_cost,
-                    service_level=SERVICE_LEVEL_FIXED,
+                    service_level=service_level,
                     print_results="NO",
                 )
 
@@ -735,7 +755,7 @@ if st.button("Run Optimization"):
                         tariff_rate=tariff_rate_used,
                         sourcing_cost=scaled_sourcing_cost,
                         print_results="NO",
-                        service_level=SERVICE_LEVEL_FIXED,
+                        service_level=service_level,
                     )
 
                     benchmark_results, benchmark_model = run_filtered(run_SC2F, bench_kwargs)
@@ -761,7 +781,7 @@ if st.button("Run Optimization"):
                     tariff_rate=tariff_rate_used,
                     sourcing_cost=scaled_sourcing_cost,
                     print_results="NO",
-                    service_level=SERVICE_LEVEL_FIXED,
+                    service_level=service_level,
                 )
                 results, model = run_filtered(run_SC1F, sc1_kwargs)
             else:
@@ -776,7 +796,7 @@ if st.button("Run Optimization"):
                     tariff_rate=tariff_rate_used,
                     sourcing_cost=scaled_sourcing_cost,
                     print_results="NO",
-                    service_level=SERVICE_LEVEL_FIXED,
+                    service_level=service_level,
                 )
                 results, model = run_filtered(run_SC2F, sc2_kwargs)
 
