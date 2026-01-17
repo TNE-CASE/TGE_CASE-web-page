@@ -52,6 +52,15 @@ st.set_page_config(
 # ================================================================
 st.sidebar.title("📌 Navigation")
 
+# Make the two navigation groups mutually exclusive.
+# Otherwise, once a Factory Model page is selected, routing always stops there
+# and the user cannot navigate to the Optimization dashboard.
+def _on_factory_change():
+    st.session_state["optimization_radio"] = None
+
+def _on_optimization_change():
+    st.session_state["factory_radio"] = None
+
 # Collapsible "Factory Model" group
 with st.sidebar.expander("🏭 Factory Model", expanded=True):
     factory_choice = st.radio(
@@ -61,7 +70,8 @@ with st.sidebar.expander("🏭 Factory Model", expanded=True):
             "SC2 – New Facilities"
         ],
         index=None,
-        key="factory_radio"
+        key="factory_radio",
+        on_change=_on_factory_change,
     )
 
 # Collapsible "Optimization" group
@@ -70,7 +80,8 @@ with st.sidebar.expander("📊 Optimization", expanded=True):
         "Select:",
         ["Optimization Dashboard"],
         index=None,
-        key="optimization_radio"
+        key="optimization_radio",
+        on_change=_on_optimization_change,
     )
 
 # ================================================================
@@ -231,67 +242,18 @@ def city_is_active(city: str, key_thr: dict) -> bool:
 
 
 # ------------------------------------------------------------
-# Mode selection (Normal vs Session)
+# Mode selection (Normal vs Gamification)
 # ------------------------------------------------------------
-# Mode selection (Normal vs Session vs Gamification)
-# ------------------------------------------------------------
-mode = st.radio("Select mode:", ["Normal Mode", "Session Mode", "Gamification Mode"])
-
-if "session_step" not in st.session_state:
-    st.session_state.session_step = 0
-
-EVENTS = {
-    "suez_canal": "🚢 Suez Canal is blocked.",
-    "oil_crises": "⛽ Oil crisis increases energy cost.",
-    "trade_war": "💼 Trade war increases tariffs.",
-}
+mode = st.radio("Select mode:", ["Normal Mode", "Gamification Mode"])
 
 # default scenario flags
 suez_flag = oil_flag = volcano_flag = trade_flag = False
 tariff_rate_used = 1.0
 
 # ------------------------------------------------------------
-# SESSION MODE LOGIC (unchanged behaviour)
-# ------------------------------------------------------------
-if mode == "Session Mode":
-    st.subheader("🎮 Scenario-based Simulation")
-
-    if "remaining_events" not in st.session_state:
-        st.session_state.remaining_events = list(EVENTS.keys())
-
-    if st.button("Start / Continue Session"):
-        if len(st.session_state.remaining_events) == 0:
-            st.success("🎉 All scenarios completed!")
-        else:
-            chosen = random.choice(st.session_state.remaining_events)
-            st.session_state.remaining_events.remove(chosen)
-            st.session_state.active_event = chosen
-
-            if chosen == "trade_war":
-                k, pct = generate_tariff_rate()
-                st.session_state.tariff_rate_random = k
-                st.session_state.tariff_x_pct = pct
-
-    if "active_event" in st.session_state:
-        ev = st.session_state.active_event
-        st.warning(EVENTS[ev])
-
-        if ev == "trade_war":
-            st.info(f"Tariffs increased by **{st.session_state.tariff_x_pct:.1f}%**")
-
-        st.text_area("Comment:", placeholder="Your decision reasoning...")
-
-    # derive flags from active event
-    suez_flag = (st.session_state.get("active_event") == "suez_canal")
-    oil_flag = (st.session_state.get("active_event") == "oil_crises")
-    volcano_flag = (st.session_state.get("active_event") == "volcano")
-    trade_flag = (st.session_state.get("active_event") == "trade_war")
-    tariff_rate_used = st.session_state.get("tariff_rate_random", 1.0)
-
-# ------------------------------------------------------------
 # GAMIFICATION MODE LOGIC 
 # ------------------------------------------------------------
-elif mode == "Gamification Mode":
+if mode == "Gamification Mode":
     st.subheader("🧩 Gamification Mode: Design Your Network")
 
     st.markdown(
