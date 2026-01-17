@@ -262,7 +262,7 @@ mode_share_tol=1e-6,
         df["SS (€/unit)"] = SS_vals
     
     
-    data["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521] # may turn back to above calculation, just keeping hardcoded version for now
+    df["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521] # may turn back to above calculation, just keeping hardcoded version for now
     
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
 
