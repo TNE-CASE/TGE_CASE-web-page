@@ -100,6 +100,8 @@ def run_scenario_master(
 # You may also provide a tuple/list (air, sea, road).
 mode_share_L1=None,
 mode_share_L2=None,
+mode_share_L1_by_plant=None,
+mode_share_L2_by_origin=None,
 mode_share_tol=1e-6,
     # NEW: per-location switches (None => backward compatible)
     # --- Layer 1 plants (existing) ---
@@ -409,45 +411,135 @@ mode_share_tol=1e-6,
     ModesL3_default = ["air", "sea", "road"]
 
     ModesL1 = ModesL1_default if active_modes_L1 is None else list(active_modes_L1)
+    # L1 (Plant -> Crossdock): road is forbidden
+    ModesL1 = [m for m in ModesL1 if m != \"road\"]
     ModesL2 = ModesL2_default if active_modes_L2 is None else list(active_modes_L2)
     ModesL3 = ModesL3_default if active_modes_L3 is None else list(active_modes_L3)
 
-    # --- Mode-share normalization (NEW) ---
-    def _normalize_mode_share(x):
-        if x is None:
+    # --- Mode-share parsing (node-based) ---
+    # Goal:
+    #   - Layer 1 (Plant -> Crossdock): enforce per-plant mode shares (air/sea only). Road is forbidden.
+    #   - Layer 2 (Crossdock/NewLoc -> DC): enforce per-origin (crossdock or new loc) mode shares (air/sea/road).
+    # Backward compatible:
+    #   - If mode_share_L1_by_plant / mode_share_L2_by_origin are None, we fall back to global mode_share_L1 / mode_share_L2.
+
+    def _parse_share_spec(spec, allowed_modes, name='mode_share'):
+        """Parse a share spec into a dict over allowed_modes.
+
+        spec can be:
+          - dict like {'air':0.3, 'sea':None} (at most one None -> remainder to 1)
+          - tuple/list aligned with allowed_modes length
+
+        Missing keys are treated as 0.0.
+        If no None is present, we accept sums close to 1; otherwise we normalize (with a warning) when sum != 1.
+        """
+        if spec is None:
             return None
-        if isinstance(x, (list, tuple)) and len(x) == 3:
-            d = {"air": float(x[0]), "sea": float(x[1]), "road": float(x[2])}
-        elif isinstance(x, dict):
-            d = {k: float(v) for k, v in x.items()}
+
+        # Build raw dict
+        if isinstance(spec, (list, tuple)):
+            if len(spec) != len(allowed_modes):
+                raise ValueError(f"{name}: expected {len(allowed_modes)} values for {allowed_modes}, got {len(spec)}")
+            raw = {m: spec[i] for i, m in enumerate(allowed_modes)}
+        elif isinstance(spec, dict):
+            raw = {m: spec.get(m, 0.0) for m in allowed_modes}
         else:
-            raise ValueError("mode_share must be a dict or a 3-tuple/list (air, sea, road).")
+            raise ValueError(f"{name}: must be a dict or a tuple/list of length {len(allowed_modes)}")
 
-        # Keep canonical keys; missing => 0.0
-        out = {k: float(d.get(k, 0.0)) for k in ["air", "sea", "road"]}
-        # Clamp negatives
-        out = {k: (0.0 if v < 0 else v) for k, v in out.items()}
+        # Count None (auto-remainder)
+        none_modes = [m for m in allowed_modes if raw.get(m, 0.0) is None]
+        if len(none_modes) > 1:
+            raise ValueError(f"{name}: at most one mode can be None (auto remainder). Got None for {none_modes}")
 
-        s = sum(out.values())
-        if s <= mode_share_tol:
-            # Degenerate (all zeros) => allow only all-zero flows
-            return {k: 0.0 for k in out}
-        return {k: v / s for k, v in out.items()}
+        out = {}
+        sum_known = 0.0
+        for m in allowed_modes:
+            v = raw.get(m, 0.0)
+            if v is None:
+                continue
+            try:
+                v = float(v)
+            except Exception:
+                raise ValueError(f"{name}: value for {m} must be numeric or None")
+            if v < -mode_share_tol:
+                raise ValueError(f"{name}: negative share for {m} is not allowed")
+            v = 0.0 if abs(v) < mode_share_tol else v
+            out[m] = v
+            sum_known += v
 
-    share_L1 = _normalize_mode_share(mode_share_L1)
-    share_L2 = _normalize_mode_share(mode_share_L2)
+        if len(none_modes) == 1:
+            rem = 1.0 - sum_known
+            if rem < -mode_share_tol:
+                raise ValueError(f"{name}: shares sum to {sum_known:.6f} (>1). Cannot fill remainder.")
+            rem = 0.0 if abs(rem) < mode_share_tol else rem
+            out[none_modes[0]] = rem
+        else:
+            # No None: accept if sum close to 1, else normalize to avoid infeasibility
+            s = sum_known
+            if s <= mode_share_tol:
+                # Degenerate (all zeros) -> keep zeros
+                out = {m: 0.0 for m in allowed_modes}
+            elif abs(s - 1.0) > 1e-4:
+                if print_results == 'YES':
+                    print(f"[WARN] {name}: shares sum to {s:.6f} (not 1). Normalizing to 1.")
+                out = {m: v / s for m, v in out.items()}
+            else:
+                # Close enough
+                out = {m: v for m, v in out.items()}
 
-    # Ensure any positively-requested mode exists in the per-layer mode sets (so vars/constraints exist)
-    if share_L1 is not None:
-        for mo, frac in share_L1.items():
-            if frac > mode_share_tol and mo not in ModesL1:
-                ModesL1.append(mo)
+        # Ensure all allowed modes present
+        out = {m: float(out.get(m, 0.0)) for m in allowed_modes}
+        return out
 
-    if share_L2 is not None:
-        for mo, frac in share_L2.items():
-            if frac > mode_share_tol and mo not in ModesL2:
-                ModesL2.append(mo)
+    # ---- Build node-based share maps ----
+    # L1: per plant shares over (air, sea)
+    share_L1_by_plant = None
+    if mode_share_L1_by_plant is not None:
+        share_L1_by_plant = {}
+        for p in Plants:
+            if p not in mode_share_L1_by_plant:
+                raise ValueError(f"mode_share_L1_by_plant missing entry for active plant '{p}'")
+            share_L1_by_plant[p] = _parse_share_spec(
+                mode_share_L1_by_plant[p],
+                allowed_modes=['air', 'sea'],
+                name=f"L1 share for plant {p}",
+            )
+    elif mode_share_L1 is not None:
+        g = _parse_share_spec(mode_share_L1, allowed_modes=['air', 'sea'], name='global L1 share')
+        share_L1_by_plant = {p: g for p in Plants}
 
+    # L2: per origin (crossdock OR new loc) shares over (air, sea, road)
+    share_L2_by_origin = None
+    if mode_share_L2_by_origin is not None:
+        share_L2_by_origin = {}
+        # Crossdocks
+        for c in Crossdocks:
+            if c not in mode_share_L2_by_origin:
+                raise ValueError(f"mode_share_L2_by_origin missing entry for active crossdock '{c}'")
+            share_L2_by_origin[c] = _parse_share_spec(
+                mode_share_L2_by_origin[c],
+                allowed_modes=['air', 'sea', 'road'],
+                name=f"L2 share for origin {c}",
+            )
+        # New locations
+        for n in New_Locs:
+            if n not in mode_share_L2_by_origin:
+                raise ValueError(f"mode_share_L2_by_origin missing entry for active new loc '{n}'")
+            share_L2_by_origin[n] = _parse_share_spec(
+                mode_share_L2_by_origin[n],
+                allowed_modes=['air', 'sea', 'road'],
+                name=f"L2 share for origin {n}",
+            )
+    elif mode_share_L2 is not None:
+        g = _parse_share_spec(mode_share_L2, allowed_modes=['air', 'sea', 'road'], name='global L2 share')
+        share_L2_by_origin = {o: g for o in list(Crossdocks) + list(New_Locs)}
+
+    # Ensure any positively requested mode exists in the per-layer mode sets (so vars/constraints exist)
+    if share_L2_by_origin is not None:
+        for o, smap in share_L2_by_origin.items():
+            for mo, frac in smap.items():
+                if frac > mode_share_tol and mo not in ModesL2:
+                    ModesL2.append(mo)
     # Volcano: block all air → we keep modes in data but disallow flows via constraints
     if volcano:
         if "air" in ModesL1:
@@ -527,43 +619,10 @@ mode_share_tol=1e-6,
         )
 
     # ======================================================
-    # 4b. MODE-SHARE CONSTRAINTS (NEW)
+    # 4b. MODE-SHARE CONSTRAINTS
     # ======================================================
 
-    # Layer 1 share constraints: Plant → Crossdock
-    if share_L1 is not None and f1:
-        total_L1 = quicksum(
-            f1[p, c, mo]
-            for p in Plants for c in Crossdocks for mo in ModesL1
-        )
-        for mo, frac in share_L1.items():
-            if mo in ModesL1:
-                flow_m = quicksum(f1[p, c, mo] for p in Plants for c in Crossdocks)
-                model.addConstr(flow_m == frac * total_L1, name=f"ModeShare_L1_{mo}")
-
-    # Layer 2 share constraints: (Crossdock → DC) + (NewLoc → DC)
-    if share_L2 is not None and (f2 or f2_new):
-        total_L2 = 0
-        if f2:
-            total_L2 += quicksum(
-                f2[c, d, mo]
-                for c in Crossdocks for d in Dcs for mo in ModesL2
-            )
-        if f2_new:
-            total_L2 += quicksum(
-                f2_new[n, d, mo]
-                for n in New_Locs for d in Dcs for mo in ModesL2
-            )
-
-        for mo, frac in share_L2.items():
-            if mo in ModesL2:
-                flow_m = 0
-                if f2:
-                    flow_m += quicksum(f2[c, d, mo] for c in Crossdocks for d in Dcs)
-                if f2_new:
-                    flow_m += quicksum(f2_new[n, d, mo] for n in New_Locs for d in Dcs)
-                model.addConstr(flow_m == frac * total_L2, name=f"ModeShare_L2_{mo}")
-
+    # NOTE: Mode-share constraints are enforced in Section 6 (Constraints) on a per-node basis.
 
     # ======================================================
     # 5. COST & CO2 EXPRESSIONS
@@ -827,6 +886,52 @@ mode_share_tol=1e-6,
             name="CrossdockBalance",
         )
 
+    # ------------------------------------------------------
+    # Transport-mode share enforcement (node-based)
+    # ------------------------------------------------------
+
+    # L1 (Plant -> Crossdock): road forbidden (safety net)
+    if f1 and "road" in ModesL1:
+        model.addConstrs(
+            (f1[p, c, "road"] == 0 for p in Plants for c in Crossdocks),
+            name="NoRoad_L1",
+        )
+
+    # L1 per-plant shares
+    if share_L1_by_plant is not None and f1:
+        for p in Plants:
+            total_p = quicksum(f1[p, c, mo] for c in Crossdocks for mo in ModesL1)
+            smap = share_L1_by_plant[p]
+            for mo, frac in smap.items():
+                if mo in ModesL1:
+                    model.addConstr(
+                        quicksum(f1[p, c, mo] for c in Crossdocks) == frac * total_p,
+                        name=f"ModeShare_L1_{p}_{mo}",
+                    )
+
+    # L2 per-origin shares (Crossdocks and NewLocs)
+    if share_L2_by_origin is not None:
+        if f2:
+            for c in Crossdocks:
+                total_c = quicksum(f2[c, d, mo] for d in Dcs for mo in ModesL2)
+                smap = share_L2_by_origin[c]
+                for mo, frac in smap.items():
+                    if mo in ModesL2:
+                        model.addConstr(
+                            quicksum(f2[c, d, mo] for d in Dcs) == frac * total_c,
+                            name=f"ModeShare_L2_{c}_{mo}",
+                        )
+        if f2_new:
+            for n in New_Locs:
+                total_n = quicksum(f2_new[n, d, mo] for d in Dcs for mo in ModesL2)
+                smap = share_L2_by_origin[n]
+                for mo, frac in smap.items():
+                    if mo in ModesL2:
+                        model.addConstr(
+                            quicksum(f2_new[n, d, mo] for d in Dcs) == frac * total_n,
+                            name=f"ModeShare_L2_{n}_{mo}",
+                        )
+
     # DC capacity
     if f3:
         model.addConstrs(
@@ -1062,8 +1167,10 @@ mode_share_tol=1e-6,
         # --- Objective ---
         "Objective_value": model.ObjVal,
         "Status": model.Status,
-        "ModeShare_L1_target": share_L1,
-        "ModeShare_L2_target": share_L2,
+        "ModeShare_L1_target": None if share_L1_by_plant is None else (share_L1_by_plant[Plants[0]] if len(Plants)>0 else None),
+        "ModeShare_L2_target": None if share_L2_by_origin is None else (share_L2_by_origin[list(share_L2_by_origin.keys())[0]] if len(share_L2_by_origin)>0 else None),
+        "ModeShare_L1_by_plant": share_L1_by_plant,
+        "ModeShare_L2_by_origin": share_L2_by_origin,
     }
 
     return results, model
