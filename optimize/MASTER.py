@@ -412,7 +412,7 @@ mode_share_tol=1e-6,
 
     ModesL1 = ModesL1_default if active_modes_L1 is None else list(active_modes_L1)
     # L1 (Plant -> Crossdock): road is forbidden
-    ModesL1 = [m for m in ModesL1 if m != \"road\"]
+    ModesL1 = [m for m in ModesL1 if m != "road"]
     ModesL2 = ModesL2_default if active_modes_L2 is None else list(active_modes_L2)
     ModesL3 = ModesL3_default if active_modes_L3 is None else list(active_modes_L3)
 
