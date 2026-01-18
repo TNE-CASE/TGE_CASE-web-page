@@ -130,17 +130,6 @@ def run_sc1():
         value=max(levels)
     )
 
-    # Slider to pick service level
-    selected_service_level = st.sidebar.slider(
-        "Service Level",
-        min_value=float(subset["Service_Level"].min()),
-        max_value=float(subset["Service_Level"].max()),
-        step=0.1,
-        value=float(subset["Service_Level"].max())
-    )
-
-    # filter
-    subset = subset[subset["Service_Level"] == selected_service_level]
 
 
     
@@ -172,6 +161,21 @@ def run_sc1():
             value=subset["Unit_penaltycost"].iloc[0]
         )
         subset = subset[subset["Unit_penaltycost"] == penalty_selected]
+
+    # Slider to pick service level
+    if "Service_Level" in subset.columns:
+        subset["Service_Level"] = subset["Service_Level"].astype(float)
+
+        selected_service_level = st.sidebar.slider(
+            "Service Level",
+            min_value=float(subset["Service_Level"].min()),
+            max_value=float(subset["Service_Level"].max()),
+            step=0.1,
+            value=float(subset["Service_Level"].max())
+        )
+
+        subset = subset[subset["Service_Level"] == selected_service_level]
+
     
     # ----------------------------------------------------
     # DETECT CO₂ REDUCTION COLUMN AUTOMATICALLY
