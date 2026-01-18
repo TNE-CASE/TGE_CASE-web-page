@@ -714,7 +714,7 @@ scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_
 
 # Service level: keep old UI for SC1F only (Normal Mode).
 # For SC2F and Gamification Mode, it is fixed (not shown).
-if ("SC1F" in model_choice) and (mode != "Gamification Mode"):
+if ("SC1F" in model_choice) and (mode == "Normal Mode"):
     service_level = st.slider(
         "Service Level",
         min_value=0.50,
