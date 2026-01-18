@@ -263,7 +263,7 @@ mode_share_tol=1e-6,
             h = df.loc[m, "h (€/unit)"]
             z = df.loc[m, "Z-score Φ^-1(α)"]
             phi_z = df.loc[m, "Density φ(Φ^-1(α))"]
-            p = 0.0  # price component omitted; you can plug it later
+            p = unit_penaltycost  
             SS = np.sqrt(LT + 1) * std_demand * (p + h) * phi_z
             SS_vals.append(SS)
         
