@@ -172,7 +172,11 @@ mode_share_tol=1e-6,
     # DC capacities (default)
 
     if service_level is None:
-        service_level = 0.9  # default service level
+        print("[WARN] service_level not provided, defaulting to 0.9")
+        service_level = 0.9
+    else:
+        print("[INFO] service_level received:", service_level)
+
     
     
     if dc_capacity is None:
