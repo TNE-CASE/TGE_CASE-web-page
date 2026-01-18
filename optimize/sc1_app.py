@@ -162,19 +162,25 @@ def run_sc1():
         )
         subset = subset[subset["Unit_penaltycost"] == penalty_selected]
 
-    # Slider to pick service level
+    # ----------------------------------------------------
+    # SERVICE LEVEL FILTER (SC1)
+    # ----------------------------------------------------
+    service_col = None
     if "Service_Level" in subset.columns:
-        subset["Service_Level"] = subset["Service_Level"].astype(float)
+        service_col = "Service_Level"
+    elif "Service Level" in subset.columns:
+        service_col = "Service Level"
 
+    if service_col and not subset.empty:
+        subset[service_col] = subset[service_col].astype(float)
         selected_service_level = st.sidebar.slider(
             "Service Level",
-            min_value=float(subset["Service_Level"].min()),
-            max_value=float(subset["Service_Level"].max()),
+            min_value=float(subset[service_col].min()),
+            max_value=float(subset[service_col].max()),
             step=0.1,
-            value=float(subset["Service_Level"].max())
+            value=float(subset[service_col].max()),
         )
-
-        subset = subset[subset["Service_Level"] == selected_service_level]
+        subset = subset[subset[service_col] == selected_service_level]
 
     
     # ----------------------------------------------------
