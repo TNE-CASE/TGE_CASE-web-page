@@ -94,7 +94,7 @@ def run_scenario_master(
     CO_2_percentage=0.5,           # reduction vs CO2_base
     unit_penaltycost=1.7,          # kept for compatibility (unused here)
     unit_inventory_holdingCost=0.85,
-    service_level = 0.9,
+    service_level = None,
 # --- OPTIONAL: Enforce per-layer transport-mode shares (percentages) ---
 # Provide dicts like {'air': 0.2, 'sea': 0.0, 'road': 0.8} (values will be normalized).
 # You may also provide a tuple/list (air, sea, road).
@@ -170,6 +170,11 @@ mode_share_tol=1e-6,
     Retailers = list(demand.keys())
 
     # DC capacities (default)
+
+    if service_level is None:
+        service_level = 0.9  # default service level
+    
+    
     if dc_capacity is None:
         dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
 
