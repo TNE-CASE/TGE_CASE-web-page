@@ -712,9 +712,9 @@ else:
 
 scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
-# --- Service level (persist across modes) ---
 if "service_level" not in st.session_state:
     st.session_state["service_level"] = 0.90
+
 
 # Only let user edit it in Normal Mode + SC1F (your requirement)
 if (mode == "Normal Mode") and ("SC1F" in model_choice):
