@@ -11,6 +11,53 @@ import requests
 from io import BytesIO
 import re
 
+import streamlit.components.v1 as components
+
+
+
+# ----------------------------------------------------
+# GA TRACKING SHOULD BE HERE
+# ----------------------------------------------------
+GA_MEASUREMENT_ID = "G-3H3B3BNF4Z"
+
+components.html(f"""
+<script>
+(function() {{
+
+    const targetDoc = window.parent.document;
+
+    const old1 = targetDoc.getElementById("ga-tag");
+    const old2 = targetDoc.getElementById("ga-src");
+    if (old1) old1.remove();
+    if (old2) old2.remove();
+
+    const s1 = targetDoc.createElement('script');
+    s1.id = "ga-src";
+    s1.async = true;
+    s1.src = "https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}";
+    targetDoc.head.appendChild(s1);
+
+    const s2 = targetDoc.createElement('script');
+    s2.id = "ga-tag";
+    s2.innerHTML = `
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {{ dataLayer.push(arguments); }}
+        gtag('js', new Date());
+        gtag('config', '{GA_MEASUREMENT_ID}', {{
+            send_page_view: true
+        }});
+    `;
+    targetDoc.head.appendChild(s2);
+
+    console.log("GA injected into TOP WINDOW → OK");
+
+}})();
+</script>
+""", height=50)
+
+
+
+
 # ----------------------------------------------------
 # 🌐 CACHED DATA LOADERS 
 # ----------------------------------------------------
@@ -82,6 +129,20 @@ def run_sc1():
         step=5,
         value=max(levels)
     )
+
+    # Slider to pick service level
+    selected_service_level = st.sidebar.slider(
+        "Service Level",
+        min_value=float(subset["Service_Level"].min()),
+        max_value=float(subset["Service_Level"].max()),
+        step=0.1,
+        value=float(subset["Service_Level"].max())
+    )
+
+    # filter
+    subset = subset[subset["Service_Level"] == selected_service_level]
+
+
     
     selected_sheet = f"Array_{selected_level}%"
     st.sidebar.write(f"📄 Using sheet: `{selected_sheet}`")
@@ -384,7 +445,7 @@ def run_sc1():
     
     # --- Aggregate production from each plant ---
     prod_sources = {}
-    for plant in ["TW", "SHA"]:
+    for plant in ["Taiwan", "Shanghai"]:
         prod_sources[plant] = sum(
             float(closest[c])
             for c in f1_cols
@@ -444,7 +505,7 @@ def run_sc1():
     with colC:
         st.markdown("#### 🌿 CO₂ Factors (kg CO₂/unit)")
         co2_factors_mfg = pd.DataFrame({
-            "From mfg": ["TW", "SHA"],
+            "From mfg": ["Taiwan", "Shanghai"],
             "CO₂ kg/unit": [6.3, 9.8]
         })
         co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{v:.1f}")
@@ -460,7 +521,7 @@ def run_sc1():
     f2_cols = [c for c in df.columns if c.startswith("f2[")]
     
     # --- Crossdocks in SC1F ---
-    crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+    crossdocks = ["Vienna", "Gdansk", "Paris"]
     
     crossdock_flows = {}
     for cd in crossdocks:
@@ -522,28 +583,29 @@ def run_sc1():
     st.markdown("## 🌍 Global Supply Chain Network")
     
     plants = pd.DataFrame({
-        "Type": ["Plant", "Plant"],
-        "Lat": [31.23, 22.32],
-        "Lon": [121.47, 114.17]
+    "Type": ["Plant", "Plant"],
+    "Lat": [31.230416, 23.553100],
+    "Lon": [121.473701, 121.021100]
     })
-    
+
     crossdocks = pd.DataFrame({
         "Type": ["Cross-dock"] * 3,
-        "Lat": [48.85, 50.11, 37.98],
-        "Lon": [2.35, 8.68, 23.73]
+        "Lat": [48.856610, 54.352100, 48.208500],
+        "Lon": [2.352220, 18.646400, 16.372100]
     })
-    
+
     dcs = pd.DataFrame({
         "Type": ["Distribution Centre"] * 4,
-        "Lat": [47.50, 48.14, 46.95, 45.46],
-        "Lon": [19.04, 11.58, 7.44, 9.19]
+        "Lat": [50.040750, 50.629250, 56.946285, 28.116667],
+        "Lon": [15.776590, 3.057256, 24.105078, -17.216667]
     })
-    
+
     retailers = pd.DataFrame({
         "Type": ["Retailer Hub"] * 7,
-        "Lat": [55.67, 53.35, 51.50, 49.82, 45.76, 43.30, 40.42],
-        "Lon": [12.57, -6.26, -0.12, 19.08, 4.83, 5.37, -3.70]
+        "Lat": [50.935173, 51.219890, 50.061430, 54.902720, 59.911491, 53.350140, 59.329440],
+        "Lon": [6.953101, 4.403460, 19.936580, 23.909610, 10.757933, -6.266155, 18.068610]
     })
+
     
     locations = pd.concat([plants, crossdocks, dcs, retailers])
     color_map = {
