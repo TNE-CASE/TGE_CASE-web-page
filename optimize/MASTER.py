@@ -233,7 +233,7 @@ mode_share_tol=1e-6,
     }
 
     # Build LT, z, φ, and SS(€/unit) if missing
-    if "SS (€/unit)" not in df.columns:
+    if True:
         average_distance = 9600  # rough benchmark
         speed = {"air": 800, "sea": 10, "road": 40}
         std_demand = np.std(list(demand.values()))
