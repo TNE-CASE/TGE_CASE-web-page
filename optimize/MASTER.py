@@ -264,7 +264,10 @@ mode_share_tol=1e-6,
         df["SS (€/unit)"] = SS_vals
     
     
-    df["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521] # may turn back to above calculation, just keeping hardcoded version for now
+    df["SS (€/unit)"] = [
+        np.sqrt(data["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + data["h (€/unit)"][i]) * data["Density φ(Φ^-1(α))"][i]
+        for i in range(len(data["transportation"]))
+    ]  
     
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
 
