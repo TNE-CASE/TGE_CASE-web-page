@@ -767,79 +767,81 @@ def run_sc1():
     # --- 3️⃣ Emission Distribution ---
     with colC:
         st.subheader("Emission Distribution")
-    
-        emission_cols = ["E_Air", "E_Sea", "E_Road", "E_Last-mile", "E_Production"]
-    
-        # Ensure these columns exist in the current sheet
-        available_cols = [c for c in emission_cols if c in df.columns]
-        if not available_cols:
-            st.warning("No emission columns found in this sheet.")
+
+        # NOTE: Some sheets use names like E(Air), others use E_air.
+        # We read from the currently selected scenario row ("closest") and fall back to Demand_* if needed.
+        emission_aliases = {
+            "Production": ["E_Production", "E(Production)", "E_production"],
+            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile"],
+            "Air": ["E_Air", "E(Air)", "E_air"],
+            "Sea": ["E_Sea", "E(Sea)", "E_sea"],
+            "Road": ["E_Road", "E(Road)", "E_road"],
+        }
+
+        def _pick_emission(row, keys):
+            for k in keys:
+                if row is not None and hasattr(row, 'index') and k in row.index:
+                    v = row.get(k, 0)
+                    try:
+                        return float(v)
+                    except Exception:
+                        try:
+                            return float(str(v).replace(',', '.'))
+                        except Exception:
+                            return 0.0
+            return 0.0
+
+        # Prefer the Array_* row (closest). If it does not contain emission columns, fall back to Demand_* aligned row.
+        row_for_emissions = closest
+        has_any = any(any(k in row_for_emissions.index for k in ks) for ks in emission_aliases.values())
+        if (not has_any) and (closest_demand is not None):
+            row_for_emissions = closest_demand
+
+        emission_data = {
+            name: _pick_emission(row_for_emissions, keys)
+            for name, keys in emission_aliases.items()
+        }
+
+        # ✅ Add Total Transport (sum of Air + Sea + Road)
+        emission_data["Total Transport"] = (
+            emission_data.get("Air", 0) + emission_data.get("Sea", 0) + emission_data.get("Road", 0)
+        )
+
+        if sum(emission_data.values()) == 0:
+            st.info("No emission data recorded for this scenario.")
         else:
-            # Clean numeric formats (convert comma decimals, strip non-numeric chars)
-            for c in available_cols:
-                df[c] = (
-                    df[c]
-                    .astype(str)
-                    .str.replace(",", ".", regex=False)
-                    .str.replace(r"[^0-9.\-]", "", regex=True)
-                )
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-    
-            # Find nearest row by CO₂ reduction %
-            co2_col = next((c for c in df.columns if "reduction" in c.lower()), None)
-            if co2_col is None:
-                st.error("No CO₂ reduction column found.")
-            else:
-                target_row = df.iloc[(df[co2_col] - co2_pct).abs().argmin()]
-    
-                # Collect emission values
-                emission_data = {
-                    "Production": target_row.get("E_Production", 0),
-                    "Last-mile": target_row.get("E_Last-mile", 0),
-                    "Air": target_row.get("E_Air", 0),
-                    "Sea": target_row.get("E_Sea", 0),
-                    "Road": target_row.get("E_Road", 0),
-                }
-    
-                # ✅ Add Total Transport (sum of Air + Sea + Road)
-                emission_data["Total Transport"] = (
-                    emission_data["Air"] + emission_data["Sea"] + emission_data["Road"]
-                )
-    
-                # Build dataframe for chart
-                df_emission_dist = pd.DataFrame({
-                    "Source": list(emission_data.keys()),
-                    "Emissions": list(emission_data.values())
-                })
-    
-                fig_emission_dist = px.bar(
-                    df_emission_dist,
-                    x="Source",
-                    y="Emissions",
-                    text="Emissions",
-                    color="Source",
-                    color_discrete_sequence=[
-                        "#1C7C54", "#17A2B8", "#808080", "#FFD700", "#4682B4", "#000000"
-                    ]
-                )
-    
-                # ✅ Add thousand separators
-                fig_emission_dist.update_traces(
-                    texttemplate="%{text:,.2f}",  # commas + 2 decimals
-                    textposition="outside"
-                )
-                fig_emission_dist.update_layout(
-                    template="plotly_white",
-                    showlegend=False,
-                    xaxis_tickangle=-35,
-                    yaxis_title="Tons of CO₂",
-                    height=400,
-                    yaxis_tickformat=","  # comma separators on axis ticks
-                    
-                )
-    
-                st.plotly_chart(fig_emission_dist, use_container_width=True)
-    
+            df_emission_dist = pd.DataFrame({
+                "Source": list(emission_data.keys()),
+                "Emissions": list(emission_data.values())
+            })
+
+            fig_emission_dist = px.bar(
+                df_emission_dist,
+                x="Source",
+                y="Emissions",
+                text="Emissions",
+                color="Source",
+                color_discrete_sequence=[
+                    "#1C7C54", "#17A2B8", "#808080", "#FFD700", "#4682B4", "#000000"
+                ]
+            )
+
+            # ✅ Add thousand separators
+            fig_emission_dist.update_traces(
+                texttemplate="%{text:,.2f}",
+                textposition="outside"
+            )
+            fig_emission_dist.update_layout(
+                template="plotly_white",
+                showlegend=False,
+                xaxis_tickangle=-35,
+                yaxis_title="Tons of CO₂",
+                height=400,
+                yaxis_tickformat=","
+            )
+
+            st.plotly_chart(fig_emission_dist, use_container_width=True)
+
     # ----------------------------------------------------
     # RAW DATA VIEW
     # ----------------------------------------------------
