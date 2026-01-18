@@ -542,12 +542,12 @@ if mode == "Gamification Mode":
     all_modes = ["air", "sea", "road"]
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.caption("🚫 Road is not allowed on Layer 1 (Plant → Cross-dock).")
         gm_modes_L1 = st.multiselect(
-            "Plant → Cross-dock",
+            "Plant → Cross-dock (Road not allowed)",
             options=["air", "sea"],
             default=["air", "sea"],
             key="gm_modes_L1",
+            help="Layer 1 (Plant → Cross-dock) does not allow road transport.",
         )
     with col_m2:
         gm_modes_L2 = st.multiselect(
@@ -564,151 +564,107 @@ if mode == "Gamification Mode":
             key="gm_modes_L3",
         )
 
+    # --- Mode share enforcement (UPDATED): per-node shares for MASTER ---
+    st.markdown("#### Transport mode shares (enforced on Layer 1 & 2)")
 
-
-    # --- Per-node mode share enforcement (MASTER: Layer 1 & 2) ---
-    st.markdown("#### Transport mode shares (enforced per facility on Layer 1 & 2)")
-
-    enforce_node_mode_shares = st.checkbox(
-        "Enforce transport-mode shares per facility / cross-dock (continuous)",
+    enforce_mode_shares = st.checkbox(
+        "Enforce transport-mode shares on Layer 1 & 2 (per facility)",
         value=False,
-        key="gm_enforce_node_mode_shares",
+        key="gm_enforce_mode_shares",
         help=(
-            "If enabled, the optimizer is forced to match these percentages per node on Layer 1 and Layer 2. "
-            "For each node you set all but ONE share; the remaining share is auto-filled to reach 100%."
+            "If enabled, the optimizer is forced to match these percentages separately for each active node. "
+            "Layer 1 is per-plant (air/sea only). Layer 2 is per-origin (crossdock or new facility) (air/sea/road)."
         ),
     )
 
     gm_mode_share_L1_by_plant = None
     gm_mode_share_L2_by_origin = None
 
-    if enforce_node_mode_shares:
+    def _pct(x: float) -> str:
+        return f"{100.0 * float(x):.1f}%"
+
+    def _l1_share_ui_for_plant(plant: str, key_prefix: str):
+        # Only air/sea; we ask for sea and auto-fill air
+        sea = st.slider(
+            f"{plant} – Sea share (L1)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.20,
+            step=0.01,
+            key=f"{key_prefix}_sea",
+        )
+        air = 1.0 - float(sea)
+        st.write(f"{plant} – Air share (L1, auto): **{_pct(air)}**")
+        # Use None remainder semantics for robustness on the MASTER side
+        return {"sea": float(sea), "air": None}
+
+    def _l2_share_ui_for_origin(origin: str, key_prefix: str):
+        # Ask for sea, then air up to remaining; road is remainder
+        sea = st.slider(
+            f"{origin} – Sea share (L2)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.20,
+            step=0.01,
+            key=f"{key_prefix}_sea",
+        )
+        rem_after_sea = 1.0 - float(sea)
+
+        if rem_after_sea <= 1e-12:
+            air = 0.0
+            st.write(f"{origin} – Air share (L2): **{_pct(air)}** (fixed because Sea is 100%)")
+        else:
+            air = st.slider(
+                f"{origin} – Air share (L2)",
+                min_value=0.0,
+                max_value=float(rem_after_sea),
+                value=0.00,
+                step=0.01,
+                key=f"{key_prefix}_air",
+            )
+
+        road = max(0.0, 1.0 - float(sea) - float(air))
+        st.write(f"{origin} – Road share (L2, auto): **{_pct(road)}**")
+
+        # Road is auto remainder
+        return {"sea": float(sea), "air": float(air), "road": None}
+
+    if enforce_mode_shares:
         st.caption(
-            "Rule: For each node, you set all but ONE mode share. The remaining mode is auto-filled to make the sum 100%. "
-            "Layer 1 forbids Road (hard rule)."
+            "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
+            "Setting a mode to 100% should NOT error."
         )
 
         # -------------------------
-        # Layer 1: per-plant shares
+        # L1: per-plant (air/sea)
         # -------------------------
-        st.markdown("**Layer 1: Plants → Cross-docks (Road not allowed)**")
-        gm_mode_share_L1_by_plant = {}
-
-        for plant in (gm_active_plants or []):
-            with st.expander(f"{plant} – Layer 1 shares", expanded=False):
-                auto_mode = st.selectbox(
-                    "Auto-fill remainder for:",
-                    options=["sea", "air"],
-                    index=0,
-                    key=f"gm_l1_auto_{plant}",
-                )
-
-                if auto_mode == "sea":
-                    air = st.slider(
-                        "Air share",
-                        0.0,
-                        1.0,
-                        0.0,
-                        0.01,
-                        key=f"gm_l1_air_{plant}",
-                    )
-                    sea = None
-                    st.write(f"Sea (auto): **{max(0.0, 1.0-air)*100:.1f}%**")
-                else:
-                    sea = st.slider(
-                        "Sea share",
-                        0.0,
-                        1.0,
-                        0.2,
-                        0.01,
-                        key=f"gm_l1_sea_{plant}",
-                    )
-                    air = None
-                    st.write(f"Air (auto): **{max(0.0, 1.0-sea)*100:.1f}%**")
-
-                # Represent "auto" with None (MASTER fills it)
-                gm_mode_share_L1_by_plant[plant] = {"air": air, "sea": sea, "road": 0.0}
-
-        # Ensure Layer 1 mode list is compatible (road forbidden)
-        gm_modes_L1 = sorted(set([m for m in gm_modes_L1 if m in {"air", "sea"}]) | {"air", "sea"})
-
-        # -------------------------
-        # Layer 2: per-origin shares
-        # -------------------------
-        st.markdown("**Layer 2: (Cross-dock / New Facility) → DCs**")
-        gm_mode_share_L2_by_origin = {}
-
-        l2_origins = list(gm_active_crossdocks or []) + list(gm_active_new_locs or [])
-        if len(l2_origins) == 0:
-            st.info("No Layer 2 origins selected (no cross-docks and no new facilities).")
+        st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
+        if len(gm_active_plants) == 0:
+            st.info("No active plants selected.")
         else:
-            for origin in l2_origins:
-                with st.expander(f"{origin} – Layer 2 shares", expanded=False):
-                    auto_mode = st.selectbox(
-                        "Auto-fill remainder for:",
-                        options=["road", "sea", "air"],
-                        index=0,
-                        key=f"gm_l2_auto_{origin}",
-                    )
-                    other = [m for m in ["air", "sea", "road"] if m != auto_mode]
+            gm_mode_share_L1_by_plant = {}
+            for p in gm_active_plants:
+                with st.expander(f"🌱 {p}", expanded=False):
+                    gm_mode_share_L1_by_plant[p] = _l1_share_ui_for_plant(p, key_prefix=f"gm_l1_{p}")
 
-                    v1 = st.slider(
-                        f"{other[0].capitalize()} share",
-                        0.0,
-                        1.0,
-                        0.0,
-                        0.01,
-                        key=f"gm_l2_{other[0]}_{origin}",
-                    )
-                    v2 = st.slider(
-                        f"{other[1].capitalize()} share",
-                        0.0,
-                        float(max(0.0, 1.0 - v1)),
-                        0.0,
-                        0.01,
-                        key=f"gm_l2_{other[1]}_{origin}",
-                    )
-                    rem = float(max(0.0, 1.0 - v1 - v2))
-                    st.write(f"{auto_mode.capitalize()} (auto): **{rem*100:.1f}%**")
+        st.markdown("---")
 
-                    share = {"air": 0.0, "sea": 0.0, "road": 0.0}
-                    share[other[0]] = v1
-                    share[other[1]] = v2
-                    share[auto_mode] = None  # remainder
-                    gm_mode_share_L2_by_origin[origin] = share
+        # -----------------------------------------
+        # L2: per-origin (crossdock + new facility)
+        # -----------------------------------------
+        st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
+        active_origins = list(gm_active_crossdocks) + list(gm_active_new_locs)
+        if len(active_origins) == 0:
+            st.info("No active cross-docks or new facilities selected.")
+        else:
+            gm_mode_share_L2_by_origin = {}
+            for o in active_origins:
+                with st.expander(f"🏷️ {o}", expanded=False):
+                    gm_mode_share_L2_by_origin[o] = _l2_share_ui_for_origin(o, key_prefix=f"gm_l2_{o}")
 
-        # Ensure required modes are enabled in the mode list
-        req_L2 = set()
-        for origin, sh in (gm_mode_share_L2_by_origin or {}).items():
-            for m in ["air", "sea", "road"]:
-                v = sh.get(m, 0.0)
-                if v is None:
-                    # remainder may be > 0 depending on sliders; keep the mode enabled
-                    req_L2.add(m)
-                elif float(v) > 1e-9:
-                    req_L2.add(m)
-        gm_modes_L2 = sorted(set(gm_modes_L2) | req_L2)
-
-        # Small summary table (visual aid)
-        with st.expander("Show configured mode shares (summary)", expanded=False):
-            rows = []
-            for p, sh in (gm_mode_share_L1_by_plant or {}).items():
-                rows.append({
-                    "Layer": "L1",
-                    "Node": p,
-                    "Air": sh.get("air"),
-                    "Sea": sh.get("sea"),
-                    "Road": sh.get("road"),
-                })
-            for o, sh in (gm_mode_share_L2_by_origin or {}).items():
-                rows.append({
-                    "Layer": "L2",
-                    "Node": o,
-                    "Air": sh.get("air"),
-                    "Sea": sh.get("sea"),
-                    "Road": sh.get("road"),
-                })
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        # Ensure required modes are enabled in the mode lists (except road on L1)
+        gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "sea"})
+        gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "sea", "road"})
 
     st.session_state["gm_mode_share_L1_by_plant"] = gm_mode_share_L1_by_plant
     st.session_state["gm_mode_share_L2_by_origin"] = gm_mode_share_L2_by_origin
@@ -800,7 +756,7 @@ if st.button("Run Optimization"):
                     active_modes_L2=gm_modes_L2,
                     active_modes_L3=gm_modes_L3,
 
-                    # NEW: enforce transport-mode shares per node on L1 & L2 (None => ignored)
+                    # NEW: enforce transport-mode shares (per-node). None => ignored.
                     mode_share_L1_by_plant=st.session_state.get("gm_mode_share_L1_by_plant", None),
                     mode_share_L2_by_origin=st.session_state.get("gm_mode_share_L2_by_origin", None),
 
