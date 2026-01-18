@@ -542,9 +542,10 @@ if mode == "Gamification Mode":
     all_modes = ["air", "sea", "road"]
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
+        st.caption("🚫 Road is not allowed on Layer 1 (Plant → Cross-dock).")
         gm_modes_L1 = st.multiselect(
             "Plant → Cross-dock",
-            options=all_modes,
+            options=["air", "sea"],
             default=["air", "sea"],
             key="gm_modes_L1",
         )
@@ -565,63 +566,152 @@ if mode == "Gamification Mode":
 
 
 
-    # --- Mode share enforcement (NEW) ---
-    st.markdown("#### Transport mode shares (enforced on Layer 1 & 2)")
+    # --- Per-node mode share enforcement (MASTER: Layer 1 & 2) ---
+    st.markdown("#### Transport mode shares (enforced per facility on Layer 1 & 2)")
 
-    enforce_mode_shares = st.checkbox(
-        "Enforce transport-mode shares on Layer 1 & 2 (continuous)",
+    enforce_node_mode_shares = st.checkbox(
+        "Enforce transport-mode shares per facility / cross-dock (continuous)",
         value=False,
-        key="gm_enforce_mode_shares",
-        help="If enabled, the optimizer is forced to match these percentages on L1 and L2 flows.",
+        key="gm_enforce_node_mode_shares",
+        help=(
+            "If enabled, the optimizer is forced to match these percentages per node on Layer 1 and Layer 2. "
+            "For each node you set all but ONE share; the remaining share is auto-filled to reach 100%."
+        ),
     )
 
-    gm_mode_share_L1 = None
-    gm_mode_share_L2 = None
+    gm_mode_share_L1_by_plant = None
+    gm_mode_share_L2_by_origin = None
 
-    if enforce_mode_shares:
-        st.caption("Set Sea and Air shares; Road is computed as the remainder (must be ≥ 0).")
+    if enforce_node_mode_shares:
+        st.caption(
+            "Rule: For each node, you set all but ONE mode share. The remaining mode is auto-filled to make the sum 100%. "
+            "Layer 1 forbids Road (hard rule)."
+        )
 
-        col_s1, col_s2 = st.columns(2)
+        # -------------------------
+        # Layer 1: per-plant shares
+        # -------------------------
+        st.markdown("**Layer 1: Plants → Cross-docks (Road not allowed)**")
+        gm_mode_share_L1_by_plant = {}
 
-        with col_s1:
-            st.markdown("**Layer 1 (Plant → Cross-dock)**")
-            sea1 = st.slider("Sea share (L1)", 0.0, 1.0, 0.20, 0.01, key="gm_share_l1_sea")
-            air1 = st.slider(
-                "Air share (L1)",
-                0.0,
-                float(max(0.0, 1.0 - sea1)),
-                0.00,
-                0.01,
-                key="gm_share_l1_air",
-            )
-            road1 = float(max(0.0, 1.0 - sea1 - air1))
-            st.write(f"Road share (L1): **{road1*100:.1f}%**")
+        for plant in (gm_active_plants or []):
+            with st.expander(f"{plant} – Layer 1 shares", expanded=False):
+                auto_mode = st.selectbox(
+                    "Auto-fill remainder for:",
+                    options=["sea", "air"],
+                    index=0,
+                    key=f"gm_l1_auto_{plant}",
+                )
 
-        with col_s2:
-            st.markdown("**Layer 2 (Cross-dock / New → DC)**")
-            sea2 = st.slider("Sea share (L2)", 0.0, 1.0, 0.20, 0.01, key="gm_share_l2_sea")
-            air2 = st.slider(
-                "Air share (L2)",
-                0.0,
-                float(max(0.0, 1.0 - sea2)),
-                0.00,
-                0.01,
-                key="gm_share_l2_air",
-            )
-            road2 = float(max(0.0, 1.0 - sea2 - air2))
-            st.write(f"Road share (L2): **{road2*100:.1f}%**")
+                if auto_mode == "sea":
+                    air = st.slider(
+                        "Air share",
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.01,
+                        key=f"gm_l1_air_{plant}",
+                    )
+                    sea = None
+                    st.write(f"Sea (auto): **{max(0.0, 1.0-air)*100:.1f}%**")
+                else:
+                    sea = st.slider(
+                        "Sea share",
+                        0.0,
+                        1.0,
+                        0.2,
+                        0.01,
+                        key=f"gm_l1_sea_{plant}",
+                    )
+                    air = None
+                    st.write(f"Air (auto): **{max(0.0, 1.0-sea)*100:.1f}%**")
 
-        gm_mode_share_L1 = {"air": air1, "sea": sea1, "road": road1}
-        gm_mode_share_L2 = {"air": air2, "sea": sea2, "road": road2}
+                # Represent "auto" with None (MASTER fills it)
+                gm_mode_share_L1_by_plant[plant] = {"air": air, "sea": sea, "road": 0.0}
 
-        # Ensure required modes are enabled in the mode lists
-        req_L1 = {m for m, v in gm_mode_share_L1.items() if v > 1e-9}
-        req_L2 = {m for m, v in gm_mode_share_L2.items() if v > 1e-9}
-        gm_modes_L1 = sorted(set(gm_modes_L1) | req_L1)
+        # Ensure Layer 1 mode list is compatible (road forbidden)
+        gm_modes_L1 = sorted(set([m for m in gm_modes_L1 if m in {"air", "sea"}]) | {"air", "sea"})
+
+        # -------------------------
+        # Layer 2: per-origin shares
+        # -------------------------
+        st.markdown("**Layer 2: (Cross-dock / New Facility) → DCs**")
+        gm_mode_share_L2_by_origin = {}
+
+        l2_origins = list(gm_active_crossdocks or []) + list(gm_active_new_locs or [])
+        if len(l2_origins) == 0:
+            st.info("No Layer 2 origins selected (no cross-docks and no new facilities).")
+        else:
+            for origin in l2_origins:
+                with st.expander(f"{origin} – Layer 2 shares", expanded=False):
+                    auto_mode = st.selectbox(
+                        "Auto-fill remainder for:",
+                        options=["road", "sea", "air"],
+                        index=0,
+                        key=f"gm_l2_auto_{origin}",
+                    )
+                    other = [m for m in ["air", "sea", "road"] if m != auto_mode]
+
+                    v1 = st.slider(
+                        f"{other[0].capitalize()} share",
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.01,
+                        key=f"gm_l2_{other[0]}_{origin}",
+                    )
+                    v2 = st.slider(
+                        f"{other[1].capitalize()} share",
+                        0.0,
+                        float(max(0.0, 1.0 - v1)),
+                        0.0,
+                        0.01,
+                        key=f"gm_l2_{other[1]}_{origin}",
+                    )
+                    rem = float(max(0.0, 1.0 - v1 - v2))
+                    st.write(f"{auto_mode.capitalize()} (auto): **{rem*100:.1f}%**")
+
+                    share = {"air": 0.0, "sea": 0.0, "road": 0.0}
+                    share[other[0]] = v1
+                    share[other[1]] = v2
+                    share[auto_mode] = None  # remainder
+                    gm_mode_share_L2_by_origin[origin] = share
+
+        # Ensure required modes are enabled in the mode list
+        req_L2 = set()
+        for origin, sh in (gm_mode_share_L2_by_origin or {}).items():
+            for m in ["air", "sea", "road"]:
+                v = sh.get(m, 0.0)
+                if v is None:
+                    # remainder may be > 0 depending on sliders; keep the mode enabled
+                    req_L2.add(m)
+                elif float(v) > 1e-9:
+                    req_L2.add(m)
         gm_modes_L2 = sorted(set(gm_modes_L2) | req_L2)
 
-    st.session_state["gm_mode_share_L1"] = gm_mode_share_L1
-    st.session_state["gm_mode_share_L2"] = gm_mode_share_L2
+        # Small summary table (visual aid)
+        with st.expander("Show configured mode shares (summary)", expanded=False):
+            rows = []
+            for p, sh in (gm_mode_share_L1_by_plant or {}).items():
+                rows.append({
+                    "Layer": "L1",
+                    "Node": p,
+                    "Air": sh.get("air"),
+                    "Sea": sh.get("sea"),
+                    "Road": sh.get("road"),
+                })
+            for o, sh in (gm_mode_share_L2_by_origin or {}).items():
+                rows.append({
+                    "Layer": "L2",
+                    "Node": o,
+                    "Air": sh.get("air"),
+                    "Sea": sh.get("sea"),
+                    "Road": sh.get("road"),
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+    st.session_state["gm_mode_share_L1_by_plant"] = gm_mode_share_L1_by_plant
+    st.session_state["gm_mode_share_L2_by_origin"] = gm_mode_share_L2_by_origin
 
 
     # Make sure lists exist even if user deselects everything
@@ -710,9 +800,9 @@ if st.button("Run Optimization"):
                     active_modes_L2=gm_modes_L2,
                     active_modes_L3=gm_modes_L3,
 
-                    # NEW: enforce transport-mode shares on L1 & L2 (None => ignored)
-                    mode_share_L1=st.session_state.get("gm_mode_share_L1", None),
-                    mode_share_L2=st.session_state.get("gm_mode_share_L2", None),
+                    # NEW: enforce transport-mode shares per node on L1 & L2 (None => ignored)
+                    mode_share_L1_by_plant=st.session_state.get("gm_mode_share_L1_by_plant", None),
+                    mode_share_L2_by_origin=st.session_state.get("gm_mode_share_L2_by_origin", None),
 
                     # Scenario params
                     CO_2_percentage=co2_pct,
@@ -855,23 +945,24 @@ if st.button("Run Optimization"):
             st.markdown("## 🌍 Global Supply Chain Map")
 
             nodes = [
-                ("Plant", 31.23, 121.47, "Shanghai"),
-                ("Plant", 22.32, 114.17, "Taiwan"),
-                ("Cross-dock", 48.85, 2.35, "Paris"),
-                ("Cross-dock", 50.11, 8.68, "Gdansk"),
-                ("Cross-dock", 37.98, 23.73, "Vienna"),
-                ("DC", 47.50, 19.04, "Pardubice"),
-                ("DC", 48.14, 11.58, "Lille"),
-                ("DC", 46.95, 7.44, "Riga"),
-                ("DC", 45.46, 9.19, "LaGomera"),
-                ("Retail", 55.67, 12.57, "Cologne"),
-                ("Retail", 53.35, -6.26, "Antwerp"),
-                ("Retail", 51.50, -0.12, "Krakow"),
-                ("Retail", 49.82, 19.08, "Kaunas"),
-                ("Retail", 45.76, 4.83, "Oslo"),
-                ("Retail", 43.30, 5.37, "Dublin"),
-                ("Retail", 40.42, -3.70, "Stockholm"),
+                ("Plant", 31.230416, 121.473701, "Shanghai"),
+                ("Plant", 23.553100, 121.021100, "Taiwan"),
+                ("Cross-dock", 48.856610, 2.352220, "Paris"),
+                ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
+                ("Cross-dock", 48.208500, 16.372100, "Vienna"),
+                ("DC", 50.040750, 15.776590, "Pardubice"),
+                ("DC", 50.629250, 3.057256, "Lille"),
+                ("DC", 56.946285, 24.105078, "Riga"),
+                ("DC", 28.116667, -17.216667, "LaGomera"),
+                ("Retail", 50.935173, 6.953101, "Cologne"),
+                ("Retail", 51.219890, 4.403460, "Antwerp"),
+                ("Retail", 50.061430, 19.936580, "Krakow"),
+                ("Retail", 54.902720, 23.909610, "Kaunas"),
+                ("Retail", 59.911491, 10.757933, "Oslo"),
+                ("Retail", 53.350140, -6.266155, "Dublin"),
+                ("Retail", 59.329440, 18.068610, "Stockholm"),
             ]
+
 
             locations = pd.DataFrame(nodes, columns=["Type", "Lat", "Lon", "City"])
 
@@ -881,12 +972,13 @@ if st.button("Run Optimization"):
             
             # New facilities (only if active)
             facility_coords = {
-                "Budapest": (49.61, 6.13, "Budapest"),
-                "Prague": (44.83, 20.42, "Prague"),
-                "Dublin": (47.09, 16.37, "Dublin"),
-                "Helsinki": (50.45, 14.50, "Helsinki"),
-                "Warsaw": (42.70, 12.65, "Warsaw"),
+                "Budapest": (47.497913, 19.040236, "Budapest"),
+                "Prague": (50.088040, 14.420760, "Prague"),
+                "Dublin": (53.350140, -6.266155, "Dublin"),
+                "Helsinki": (60.169520, 24.935450, "Helsinki"),
+                "Warsaw": (52.229770, 21.011780, "Warsaw"),
             }
+
             
             for name, (lat, lon, city) in facility_coords.items():
                 var = model.getVarByName(f"f2_2_bin[{name}]")
