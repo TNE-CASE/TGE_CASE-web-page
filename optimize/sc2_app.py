@@ -328,13 +328,13 @@ def run_sc2():
     prod_sources = {}
     
     # Existing plants (f1)
-    for plant in ["TW", "SHA"]:
+    for plant in ["Taiwan", "Shanghai"]:
         prod_sources[plant] = sum(
             float(closest[c]) for c in f1_cols if c.startswith(f"f1[{plant},")
         )
     
     # New European factories (f2_2)
-    new_facilities = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
+    new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
     for fac in new_facilities:
         prod_sources[fac] = sum(
             float(closest[c]) for c in f2_2_cols if c.startswith(f"f2_2[{fac},")
@@ -394,7 +394,7 @@ def run_sc2():
     with colC:
         st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
         co2_factors_mfg = pd.DataFrame({
-            "From mfg": ["TW", "SHA", "HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"],
+            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
             "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2 ],
         })
         co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{v:.1f}")
@@ -413,7 +413,7 @@ def run_sc2():
     f2_cols = [c for c in df.columns if c.startswith("f2[")]
     
     # --- Define crossdocks used in SC2 ---
-    crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+    crossdocks = ["Paris", "Gdansk", "Vienna"]
     
     # --- Calculate crossdock outbounds ---
     crossdock_flows = {}
@@ -489,43 +489,42 @@ def run_sc2():
     
     # --- Plants (f1, China region) ---
     plants = pd.DataFrame({
-        "Type": ["Plant", "Plant"],
-        "Lat": [31.23, 22.32],        # Shanghai & Southern China
-        "Lon": [121.47, 114.17]
+    "Type": ["Plant", "Plant"],
+    "Lat": [31.230416, 23.553100],
+    "Lon": [121.473701, 121.021100]
     })
-    
-    # --- Cross-docks (f2) ---
+
     crossdocks = pd.DataFrame({
         "Type": ["Cross-dock"] * 3,
-        "Lat": [48.85, 50.11, 37.98],   # France, Germany, Greece
-        "Lon": [2.35, 8.68, 23.73]
+        "Lat": [48.856610, 54.352100, 48.208500],
+        "Lon": [2.352220, 18.646400, 16.372100]
     })
-    
-    # --- Distribution Centres (DCs) ---
+
     dcs = pd.DataFrame({
         "Type": ["Distribution Centre"] * 4,
-        "Lat": [47.50, 48.14, 46.95, 45.46],   # Central Europe
-        "Lon": [19.04, 11.58, 7.44, 9.19]
+        "Lat": [50.040750, 50.629250, 56.946285, 28.116667],
+        "Lon": [15.776590, 3.057256, 24.105078, -17.216667]
     })
-    
-    # --- Retailer Hubs (f3) ---
+
     retailers = pd.DataFrame({
         "Type": ["Retailer Hub"] * 7,
-        "Lat": [55.67, 53.35, 51.50, 49.82, 45.76, 43.30, 40.42],  # North to South
-        "Lon": [12.57, -6.26, -0.12, 19.08, 4.83, 5.37, -3.70]
+        "Lat": [50.935173, 51.219890, 50.061430, 54.902720, 59.911491, 53.350140, 59.329440],
+        "Lon": [6.953101, 4.403460, 19.936580, 23.909610, 10.757933, -6.266155, 18.068610]
     })
+
     
     # --- New Production Facilities (f2_2) ---
     f2_2_cols = [c for c in closest.index if c.startswith("f2_2_bin")]
     
     # Define coordinates (one per possible facility)
     facility_coords = {
-        "f2_2_bin[HUDTG]": (49.61, 6.13),
-        "f2_2_bin[CZMCT]":  (44.83, 20.42),
-        "f2_2_bin[IEILG]": (47.09, 16.37),
-        "f2_2_bin[FIMPF]": (50.45, 14.50),
-        "f2_2_bin[PLZCA]": (42.70, 12.65),
+    "f2_2_bin[Budapest]": (47.497913, 19.040236),   # Budapest
+    "f2_2_bin[Prague]": (50.088040, 14.420760),   # Prague
+    "f2_2_bin[Dublin]": (53.350140, -6.266155),   # Dublin
+    "f2_2_bin[Helsinki]": (60.169520, 24.935450),   # Helsinki
+    "f2_2_bin[Warsaw]": (52.229770, 21.011780),   # Warsaw
     }
+
     
     active_facilities = []
     for col in f2_2_cols:
