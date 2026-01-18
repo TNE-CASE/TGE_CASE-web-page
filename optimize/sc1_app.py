@@ -446,21 +446,48 @@ def run_sc1():
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)
     # ----------------------------------------------------
     st.markdown("## 🏭 Production Outbound Breakdown")
+
+    # --- Helper: safe float conversion ---
+    def _safe_float(x):
+        try:
+            if pd.isna(x):
+                return 0.0
+            return float(x)
+        except Exception:
+            try:
+                return float(str(x).replace(",", "."))
+            except Exception:
+                return 0.0
+
+    # --- Read the corresponding detailed (Demand_*) sheet row for flow variables ---
+    demand_sheet = f"Demand_{selected_level}%"
+    df_demand = excel_data.get(demand_sheet)
+    closest_idx = int(closest.name) if closest.name is not None else None
+    closest_demand = None
+    if df_demand is not None and closest_idx is not None:
+        if 0 <= closest_idx < len(df_demand):
+            closest_demand = df_demand.iloc[closest_idx]
     
-    # --- Total demand reference ---
-    TOTAL_MARKET_DEMAND = 111000  # units
-    
-    # --- Collect f1 variables (China plants) ---
-    f1_cols = [c for c in df.columns if c.startswith("f1[")]
-    
-    # --- Aggregate production from each plant ---
+    # --- Total demand reference (scale by demand level) ---
+    BASE_MARKET_DEMAND = 111000  # units at 100%
+    demand_factor = (
+        _safe_float(closest_demand.get("Demand_Level"))
+        if closest_demand is not None and "Demand_Level" in closest_demand.index
+        else (selected_level / 100.0)
+    )
+    TOTAL_MARKET_DEMAND = BASE_MARKET_DEMAND * demand_factor
+
+    # --- Aggregate production from each plant (prefer summary columns; fallback to detailed f1[*] flows) ---
     prod_sources = {}
     for plant in ["Taiwan", "Shanghai"]:
-        prod_sources[plant] = sum(
-            float(closest[c])
-            for c in f1_cols
-            if c.startswith(f"f1[{plant},")
-        )
+        summary_col = f"{plant} Outbound"
+        if summary_col in closest.index:
+            prod_sources[plant] = _safe_float(closest.get(summary_col))
+        elif closest_demand is not None:
+            f1_cols = [c for c in df_demand.columns if c.startswith(f"f1[{plant},")]
+            prod_sources[plant] = sum(_safe_float(closest_demand.get(c)) for c in f1_cols)
+        else:
+            prod_sources[plant] = 0.0
     
     # --- Calculate unmet demand ---
     total_produced = sum(prod_sources.values())
@@ -469,7 +496,8 @@ def run_sc1():
     # --- Prepare dataframe ---
     labels = list(prod_sources.keys()) + ["Unmet Demand"]
     values = [prod_sources[k] for k in prod_sources] + [unmet]
-    percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
+    denom = TOTAL_MARKET_DEMAND if TOTAL_MARKET_DEMAND else 1.0
+    percentages = [v / denom * 100 for v in values]
     
     df_prod = pd.DataFrame({
         "Source": labels,
@@ -526,20 +554,19 @@ def run_sc1():
     # 🚚 CROSSDOCK OUTBOUND PIE CHART (f2 only)
     # ----------------------------------------------------
     st.markdown("## 🚚 Crossdock Outbound Breakdown")
-    
-    # --- Collect f2 variables (Crossdock → DC) ---
-    f2_cols = [c for c in df.columns if c.startswith("f2[")]
-    
+
     # --- Crossdocks in SC1F ---
     crossdocks = ["Vienna", "Gdansk", "Paris"]
-    
+
+    # NOTE: Array_* sheets do not contain f2[*] variables. Use the aligned Demand_* sheet for crossdock flows.
     crossdock_flows = {}
-    for cd in crossdocks:
-        crossdock_flows[cd] = sum(
-            float(closest[c])
-            for c in f2_cols
-            if c.startswith(f"f2[{cd},")
-        )
+    if closest_demand is not None:
+        for cd in crossdocks:
+            f2_cols = [c for c in df_demand.columns if c.startswith(f"f2[{cd},")]
+            crossdock_flows[cd] = sum(_safe_float(closest_demand.get(c)) for c in f2_cols)
+    else:
+        for cd in crossdocks:
+            crossdock_flows[cd] = 0.0
     
     # --- Compute total handled shipments (no unmet here) ---
     total_outbound_cd = sum(crossdock_flows.values())
