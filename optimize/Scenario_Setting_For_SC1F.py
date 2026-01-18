@@ -56,7 +56,7 @@ def run_scenario(
     volcano = False,
     trade_war = False,
     tariff_rate=1,
-    service_level=0.9
+    service_level=None
 ):
     # =====================================================
     # DEFAULT DATA (filled from original SC2)
@@ -136,7 +136,10 @@ def run_scenario(
     data["Density φ(Φ^-1(α))"] = phi_values
     
     # SS (€/unit) = √(LT + 1) * σ * (p + h) * φ(z)
-    data["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521]    
+    data["SS (€/unit)"] = [
+        np.sqrt(data["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + data["h (€/unit)"][i]) * data["Density φ(Φ^-1(α))"][i]
+        for i in range(len(data["transportation"]))
+    ]    
     
     
     Modes = ["air", "sea", "road"]
@@ -153,13 +156,7 @@ def run_scenario(
     
     tau = df["t (€/kg-km)"].to_dict()
 
-
-    new_loc_totalCost = {
-        loc: new_loc_openingCost[loc] + new_loc_operationCost[loc]
-        for loc in new_loc_openingCost
-    }
-    
-    new_loc_unitCost = {loc: (1 / cap) * 00000 for loc, cap in new_loc_capacity.items()}
+   
     
     print(df)
     print(df["LT (days)"])
@@ -183,14 +180,6 @@ def run_scenario(
         columns=["Pardubice","Lille","Riga","LaGomera"]
     )
     
-    dist2_2 = pd.DataFrame([[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
-                            [98.034644813461, 818.765381327031, 987.72775809091, 1529.9990581232],
-                            [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
-                            [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
-                            [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-                           index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-                           columns = ["Pardubice","Lille","Riga","LaGomera"]
-                           )
     
     dist3 = pd.DataFrame(
         [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
@@ -594,7 +583,7 @@ def extract_var_values(model):
 
 def simulate_scenarios_full():
     # --- Demand scaling levels ---
-    demand_levels = [1.00, 0.95, 0.90, 0.85, 0.80, 0.75]
+    demand_levels = [1.00, 0.95, 0.90, 0.85, 0.80]
 
     # --- Base demand (for scaling) ---
     base_demand = {
@@ -615,14 +604,15 @@ def simulate_scenarios_full():
         co2_values = [1 * i / 100 for i in range(0, 100)]
         product_weights = [2.58]
         CO_2_CostsAtMfg = [37.50]
-        unit_penaltycost = [1.7]
+        service_levels = [10*i/100 for i in range(5, 10)]
+        
         
         scenario_counter = 0
 
         for co2_pct in co2_values:
             for w in product_weights:
                 for co2_cost in CO_2_CostsAtMfg:
-                    for penaltycost in unit_penaltycost:
+                    for service_level in service_levels:
                         start = time.time()
 
                         try:
@@ -631,7 +621,7 @@ def simulate_scenarios_full():
                                 CO_2_percentage=co2_pct,
                                 product_weight=w,
                                 co2_cost_per_ton=co2_cost,
-                                unit_penaltycost=penaltycost,
+                                service_level=service_level,
                                 print_results="NO"
                             )
 
@@ -654,7 +644,7 @@ def simulate_scenarios_full():
                             "CO2_percentage": co2_pct,
                             "Product_weight": w,
                             "CO2_CostAtMfg": co2_cost,
-                            "Unit_penaltycost": penaltycost,
+                            "Service_Level": service_level,
                             "Runtime_sec": round(runtime, 2),
                             "Demand_Level": level,
                             **results,
@@ -662,7 +652,7 @@ def simulate_scenarios_full():
                         }
 
                         results_summary.append(run_record)
-                        key = (round(co2_pct, 3), round(w, 3), round(co2_cost, 3), round(penaltycost, 3), round(level, 3))
+                        key = (round(co2_pct, 3), round(w, 3), round(co2_cost, 3), round(service_level, 3), round(level, 3))
                         json_dict[str(key)] = run_record
 
                         print(f"✅ Done: Demand={int(level*100)}%, CO2={co2_pct:.2f}, Obj={results.get('Objective_value', 0):.2f}")
@@ -686,6 +676,7 @@ def simulate_scenarios_full():
             formatted_row = [
                 record.get("CO2_percentage", 0),                 # CO2 Reduction %
                 record.get("CO2_Total", 0),                      # Total Emissions (tons)
+                record.get("Service_Level", 0),                  # Service Level
                 record.get("E_air", 0),                          # E(Air)
                 record.get("E_sea", 0),                          # E(Sea)
                 record.get("E_road", 0),                         # E(Road)
@@ -707,13 +698,13 @@ def simulate_scenarios_full():
                 + record.get("f1[Taiwan,Paris,air]", 0)
                 +record.get("f1[Taiwan,Vienna,sea]", 0)
                 + record.get("f1[Taiwan,Gdansk,sea]", 0)
-                + record.get("f1[Taiwan,Paris,sea]", 0),             # TW Outbound
+                + record.get("f1[Taiwan,Paris,sea]", 0),             # Taiwan Outbound
                 record.get("f1[Shanghai,Vienna,air]", 0)
                 + record.get("f1[Shanghai,Gdansk,air]", 0)
                 + record.get("f1[Shanghai,Paris,air]", 0)
                 +record.get("f1[Shanghai,Vienna,sea]", 0)
                 + record.get("f1[Shanghai,Gdansk,sea]", 0)
-                + record.get("f1[Shanghai,Paris,sea]", 0),            # SHA Outbound
+                + record.get("f1[Shanghai,Paris,sea]", 0),            # Shanghai Outbound
                 
                 sum(v for k, v in record.items() if "f1" in k and "air"  in k),  # Layer1Air (units)
                 sum(v for k, v in record.items() if "f1" in k and "sea"  in k),  # Layer1Sea
@@ -728,13 +719,16 @@ def simulate_scenarios_full():
             formatted_summary.append(formatted_row)
 
         headers = [
-            "CO2 Reduction %", "Total Emissions", "E(Air)", "E(Sea)", "E(Road)",
-            "E(Last-mile)", "E(Production)", "Total Cost", "Transportation Cost",
+            "CO2 Reduction %", "Total Emissions", "Service Level",
+            "E(Air)", "E(Sea)", "E(Road)",
+            "E(Last-mile)", "E(Production)",
+            "Total Cost", "Transportation Cost",
             "Sourcing/Handling Cost", "CO2 Cost in Production",
-            "Transit Inventory Cost", "TW Outbound", "SHA Outbound",
+            "Transit Inventory Cost", "Taiwan Outbound", "Shanghai Outbound",
             "Layer1Air", "Layer1Sea", "Layer2Air", "Layer2Sea", "Layer2Road",
             "Layer3Air", "Layer3Sea", "Layer3Road", "DemandFulfillment"
         ]
+
 
         df_array = pd.DataFrame(formatted_summary, columns=headers)
         df_array.to_excel(writer, sheet_name=f"Array_{int(level*100)}%", index=False)
