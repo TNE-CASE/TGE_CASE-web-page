@@ -243,33 +243,21 @@ mode_share_tol=1e-6,
         speed = {"air": 800, "sea": 10, "road": 40}
         std_demand = np.std(list(demand.values()))
 
-        if "LT (days)" not in df.columns:
-            df["LT (days)"] = [
-                np.round((average_distance * (1.2 if m == "sea" else 1))
-                         / (speed[m] * 24), 13)
-                for m in df.index
-            ]
+        df["LT (days)"] = [
+            np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
+            for m in speed
+        ]
 
-        z_values = [norm.ppf(service_level[m]) for m in df.index]
+        z_values = [norm.ppf(m) for m in service_level.values()]
         phi_values = [norm.pdf(z) for z in z_values]
 
         df["Z-score Φ^-1(α)"] = z_values
         df["Density φ(Φ^-1(α))"] = phi_values
 
-        # SS (€/unit) ≈ √(LT+1) * σ * (p + h) * φ(z)
-        SS_vals = []
-        for m in df.index:
-            LT = df.loc[m, "LT (days)"]
-            h = df.loc[m, "h (€/unit)"]
-            z = df.loc[m, "Z-score Φ^-1(α)"]
-            phi_z = df.loc[m, "Density φ(Φ^-1(α))"]
-            p = unit_penaltycost  
-            SS = np.sqrt(LT + 1) * std_demand * (p + h) * phi_z
-            SS_vals.append(SS)
-        
-        df["SS (€/unit)"] = SS_vals
-
-
+        df["SS (€/unit)"] = [
+            np.sqrt(df["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + df["h (€/unit)"][i]) * df["Density φ(Φ^-1(α))"][i]
+            for i in range(len(df["transportation"]))
+        ]
  
     
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
