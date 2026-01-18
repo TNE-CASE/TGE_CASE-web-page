@@ -144,7 +144,7 @@ def run_sc2():
     
     
     # 🎯 Carbon price selector (work with either column name)
-    co2_cost_options = [0, 20, 40, 60, 80, 100, 1000, 10000, 100000]  # €/ton
+    co2_cost_options = [20, 40, 60, 80, 100, 1000, 10000, 100000]  # €/ton
     co2_cost = st.sidebar.select_slider(
         "CO₂ Price in Europe (€ per ton)",
         options=co2_cost_options,
