@@ -261,7 +261,9 @@ mode_share_tol=1e-6,
             p = 0.0  # price component omitted; you can plug it later
             SS = np.sqrt(LT + 1) * std_demand * (p + h) * phi_z
             SS_vals.append(SS)
-    
+        
+        df["SS (€/unit)"] = SS_vals
+
 
  
     

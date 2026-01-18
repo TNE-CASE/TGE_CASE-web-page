@@ -712,19 +712,24 @@ else:
 
 scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
-# Service level: keep old UI for SC1F only (Normal Mode).
-# For SC2F and Gamification Mode, it is fixed (not shown).
-if (mode == "Gamification Mode") or (("SC1F" in model_choice) and (mode == "Normal Mode")):
-    service_level = st.slider(
+# --- Service level (persist across modes) ---
+if "service_level" not in st.session_state:
+    st.session_state["service_level"] = 0.90
+
+# Only let user edit it in Normal Mode + SC1F (your requirement)
+if (mode == "Normal Mode") and ("SC1F" in model_choice):
+    st.session_state["service_level"] = st.slider(
         "Service Level",
         min_value=0.50,
         max_value=0.99,
-        value=0.90,
+        value=float(st.session_state["service_level"]),
         step=0.01,
-        help="Service level used in MASTER (Gamification) and SC1F (Normal Mode).",
+        help="Used by SC1F and also passed to MASTER (Gamification) for inventory/safety stock logic.",
     )
-else:
-    service_level = 0.90
+
+# Always use the persisted value everywhere (including MASTER run)
+service_level = float(st.session_state["service_level"])
+
 
 # Keep both defined (MASTER uses both; UI edits the relevant one)
 co2_cost_per_ton = 37.5
