@@ -261,39 +261,8 @@ mode_share_tol=1e-6,
             p = 0.0  # price component omitted; you can plug it later
             SS = np.sqrt(LT + 1) * std_demand * (p + h) * phi_z
             SS_vals.append(SS)
-        df["SS (€/unit)"] = SS_vals
     
-    
-    # Add holding cost if not present
-    if "h (€/unit)" not in df.columns:
-        df["h (€/unit)"] = unit_inventory_holdingCost
 
-    # Service level per mode (scalar -> dict)
-    service_level = {"air": service_level, "sea": service_level, "road": service_level}
-
-    # --- ALWAYS recompute LT / z / phi / SS so UI changes take effect ---
-    average_distance = 9600
-    speed = {"air": 800, "sea": 10, "road": 40}
-    std_demand = np.std(list(demand.values()))
-
-    if "LT (days)" not in df.columns:
-        df["LT (days)"] = [
-            np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
-            for m in df.index
-        ]
-
-    z_values = [norm.ppf(service_level[m]) for m in df.index]
-    phi_values = [norm.pdf(z) for z in z_values]
-    df["Z-score Φ^-1(α)"] = z_values
-    df["Density φ(Φ^-1(α))"] = phi_values
-
-    df["SS (€/unit)"] = [
-        np.sqrt(df.loc[m, "LT (days)"] + 1)
-        * std_demand
-        * (unit_penaltycost + df.loc[m, "h (€/unit)"])
-        * df.loc[m, "Density φ(Φ^-1(α))"]
-        for m in df.index
-    ]
  
     
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
