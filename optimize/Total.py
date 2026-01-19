@@ -850,7 +850,7 @@ if st.button("Run Optimization"):
                 results, model = run_filtered(run_SC2F, sc2_kwargs)
 
 
-            st.success("Optimization complete! ✅ service level: {:.2f}%".format(service_level * 100.0))
+            st.success("Optimization complete! ✅" )
 
             # ===========================================
             # Objective + Emissions
