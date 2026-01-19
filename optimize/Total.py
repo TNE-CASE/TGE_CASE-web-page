@@ -526,7 +526,7 @@ if mode == "Gamification Mode":
         st.caption("New production sites")
         gm_active_new_locs = [
             n for n in new_locs_all
-            if st.checkbox(n, value=True, key=f"gm_new_{n}")
+            if st.checkbox(n, value=False, key=f"gm_new_{n}")
         ]
 
     # All DCs active (no selection in UI)
