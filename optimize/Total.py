@@ -680,10 +680,16 @@ st.subheader("📊 Scenario Parameters")
 
 co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 
-model_choice = st.selectbox(
-    "Optimization model:",
-    ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
-)
+# In Gamification Mode, model selection is irrelevant (MASTER is always used).
+# Keep model_choice for downstream logic, but only show the selector in Normal Mode.
+if mode == "Normal Mode":
+    model_choice = st.selectbox(
+        "Optimization model:",
+        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"],
+    )
+else:
+    # Default for any conditional logic that still references model_choice
+    model_choice = "SC2F – Allow New Facilities"
 
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
