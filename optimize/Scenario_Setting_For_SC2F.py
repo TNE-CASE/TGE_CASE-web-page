@@ -127,7 +127,10 @@ def run_scenario(
     data["Density φ(Φ^-1(α))"] = phi_values
     
     # SS (€/unit) = √(LT + 1) * σ * (p + h) * φ(z)
-    data["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521]    
+    data["SS (€/unit)"] = [
+        np.sqrt(data["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + data["h (€/unit)"][i]) * data["Density φ(Φ^-1(α))"][i]
+        for i in range(len(data["transportation"]))
+]    
     
     
     Modes = ["air", "sea", "road"]
