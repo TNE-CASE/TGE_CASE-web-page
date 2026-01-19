@@ -565,25 +565,31 @@ if mode == "Gamification Mode":
         )
 
     # --- Mode share enforcement (UPDATED): per-node shares for MASTER ---
-    # IMPORTANT CHANGE (per request):
-    # We ALWAYS enforce per-node transport-mode shares on Layer 1 & 2.
-    # The old on/off checkbox is removed.
     st.markdown("#### Transport mode shares (enforced on Layer 1 & 2)")
 
-    gm_mode_share_L1_by_plant = {}
-    gm_mode_share_L2_by_origin = {}
+    enforce_mode_shares = st.checkbox(
+        "Enforce transport-mode shares on Layer 1 & 2 (per facility)",
+        value=False,
+        key="gm_enforce_mode_shares",
+        help=(
+            "If enabled, the optimizer is forced to match these percentages separately for each active node. "
+            "Layer 1 is per-plant (air/sea only). Layer 2 is per-origin (crossdock or new facility) (air/sea/road)."
+        ),
+    )
+
+    gm_mode_share_L1_by_plant = None
+    gm_mode_share_L2_by_origin = None
 
     def _pct(x: float) -> str:
         return f"{100.0 * float(x):.1f}%"
 
     def _l1_share_ui_for_plant(plant: str, key_prefix: str):
         # Only air/sea; we ask for sea and auto-fill air
-        # Default requested: 50-50 on Layer 1.
         sea = st.slider(
             f"{plant} – Sea share (L1)",
             min_value=0.0,
             max_value=1.0,
-            value=0.50,
+            value=0.20,
             step=0.01,
             key=f"{key_prefix}_sea",
         )
@@ -594,12 +600,11 @@ if mode == "Gamification Mode":
 
     def _l2_share_ui_for_origin(origin: str, key_prefix: str):
         # Ask for sea, then air up to remaining; road is remainder
-        # Default requested: 50-50-0 on Layer 2.
         sea = st.slider(
             f"{origin} – Sea share (L2)",
             min_value=0.0,
             max_value=1.0,
-            value=0.50,
+            value=0.20,
             step=0.01,
             key=f"{key_prefix}_sea",
         )
@@ -613,7 +618,7 @@ if mode == "Gamification Mode":
                 f"{origin} – Air share (L2)",
                 min_value=0.0,
                 max_value=float(rem_after_sea),
-                value=float(rem_after_sea),
+                value=0.00,
                 step=0.01,
                 key=f"{key_prefix}_air",
             )
@@ -624,39 +629,42 @@ if mode == "Gamification Mode":
         # Road is auto remainder
         return {"sea": float(sea), "air": float(air), "road": None}
 
-    st.caption(
-        "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
-        "Defaults are pre-set (L1: 50/50, L2: 50/50/0)."
-    )
+    if enforce_mode_shares:
+        st.caption(
+            "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
+            
+        )
 
-    # -------------------------
-    # L1: per-plant (air/sea)
-    # -------------------------
-    st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
-    if len(gm_active_plants) == 0:
-        st.info("No active plants selected.")
-    else:
-        for p in gm_active_plants:
-            with st.expander(f"🌱 {p}", expanded=False):
-                gm_mode_share_L1_by_plant[p] = _l1_share_ui_for_plant(p, key_prefix=f"gm_l1_{p}")
+        # -------------------------
+        # L1: per-plant (air/sea)
+        # -------------------------
+        st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
+        if len(gm_active_plants) == 0:
+            st.info("No active plants selected.")
+        else:
+            gm_mode_share_L1_by_plant = {}
+            for p in gm_active_plants:
+                with st.expander(f"🌱 {p}", expanded=False):
+                    gm_mode_share_L1_by_plant[p] = _l1_share_ui_for_plant(p, key_prefix=f"gm_l1_{p}")
 
-    st.markdown("---")
+        st.markdown("---")
 
-    # -----------------------------------------
-    # L2: per-origin (crossdock + new facility)
-    # -----------------------------------------
-    st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
-    active_origins = list(gm_active_crossdocks) + list(gm_active_new_locs)
-    if len(active_origins) == 0:
-        st.info("No active cross-docks or new facilities selected.")
-    else:
-        for o in active_origins:
-            with st.expander(f"🏷️ {o}", expanded=False):
-                gm_mode_share_L2_by_origin[o] = _l2_share_ui_for_origin(o, key_prefix=f"gm_l2_{o}")
+        # -----------------------------------------
+        # L2: per-origin (crossdock + new facility)
+        # -----------------------------------------
+        st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
+        active_origins = list(gm_active_crossdocks) + list(gm_active_new_locs)
+        if len(active_origins) == 0:
+            st.info("No active cross-docks or new facilities selected.")
+        else:
+            gm_mode_share_L2_by_origin = {}
+            for o in active_origins:
+                with st.expander(f"🏷️ {o}", expanded=False):
+                    gm_mode_share_L2_by_origin[o] = _l2_share_ui_for_origin(o, key_prefix=f"gm_l2_{o}")
 
-    # Ensure required modes are enabled in the mode lists (except road on L1)
-    gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "sea"})
-    gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "sea", "road"})
+        # Ensure required modes are enabled in the mode lists (except road on L1)
+        gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "sea"})
+        gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "sea", "road"})
 
     st.session_state["gm_mode_share_L1_by_plant"] = gm_mode_share_L1_by_plant
     st.session_state["gm_mode_share_L2_by_origin"] = gm_mode_share_L2_by_origin
@@ -680,16 +688,10 @@ st.subheader("📊 Scenario Parameters")
 
 co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 
-# In Gamification Mode, model selection is irrelevant (MASTER is always used).
-# Keep model_choice for downstream logic, but only show the selector in Normal Mode.
-if mode == "Normal Mode":
-    model_choice = st.selectbox(
-        "Optimization model:",
-        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"],
-    )
-else:
-    # Default for any conditional logic that still references model_choice
-    model_choice = "SC2F – Allow New Facilities"
+model_choice = st.selectbox(
+    "Optimization model:",
+    ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
+)
 
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
@@ -1216,20 +1218,26 @@ if st.button("Run Optimization"):
                             volcano=volcano_flag,
                             trade_war=trade_flag,
                             tariff_rate=tariff_rate_used,
+                            sourcing_cost=scaled_sourcing_cost,
+                            service_level=service_level,
                             print_results="NO",
                         )
+
                     else:
                         from Scenario_Setting_For_SC1F_uns import run_scenario as run_Uns
                         results_uns, model_uns = run_Uns(
                             CO_2_percentage=co2_pct,
-                            co2_cost_per_ton=co2_cost_per_ton,
+                            co2_cost_per_ton_New=co2_cost_per_ton_New,
                             suez_canal=suez_flag,
                             oil_crises=oil_flag,
                             volcano=volcano_flag,
                             trade_war=trade_flag,
                             tariff_rate=tariff_rate_used,
+                            sourcing_cost=scaled_sourcing_cost,
+                            service_level=service_level,
                             print_results="NO",
                         )
+
 
                     # --------------------------------------------------
                     # SUCCESS DISPLAY (FALLBACK MODEL)

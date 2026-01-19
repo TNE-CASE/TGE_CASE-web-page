@@ -121,8 +121,11 @@ def run_scenario(
     data["Density φ(Φ^-1(α))"] = phi_values
     
     # SS (€/unit) = √(LT + 1) * σ * (p + h) * φ(z)
-    data["SS (€/unit)"] = [2109.25627631292, 12055.4037653689, 5711.89299799521]    
-    
+    data["SS (€/unit)"] = [
+        np.sqrt(data["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + data["h (€/unit)"][i]) * data["Density φ(Φ^-1(α))"][i]
+        for i in range(len(data["transportation"]))
+    ]    
+        
     
     Modes = ["air", "sea", "road"]
     ModesL1 = ["air", "sea"]
@@ -180,7 +183,7 @@ def run_scenario(
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
         index=["Pardubice","Lille","Riga","LaGomera"],
-        columns=["Vienna","Gdansk","Paris","Budapest","Prague","Dublin","Helsinki","Warsaw"]
+        columns=["Cologne","Antwerp","Krakow","Kaunas","Oslo","Dublin","Stockholm"]
     )
     
     # -----------------------------
