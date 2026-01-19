@@ -30,18 +30,6 @@ from collections import defaultdict
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 # ================================================================
 # PAGE CONFIG (only once!)
 # ================================================================
@@ -577,17 +565,8 @@ if mode == "Gamification Mode":
         )
 
     # --- Mode share enforcement (UPDATED): per-node shares for MASTER ---
+    # Always enforced in Gamification Mode (no checkbox).
     st.markdown("#### Transport mode shares (enforced on Layer 1 & 2)")
-
-    enforce_mode_shares = st.checkbox(
-        "Enforce transport-mode shares on Layer 1 & 2 (per facility)",
-        value=False,
-        key="gm_enforce_mode_shares",
-        help=(
-            "If enabled, the optimizer is forced to match these percentages separately for each active node. "
-            "Layer 1 is per-plant (air/sea only). Layer 2 is per-origin (crossdock or new facility) (air/sea/road)."
-        ),
-    )
 
     gm_mode_share_L1_by_plant = None
     gm_mode_share_L2_by_origin = None
@@ -601,7 +580,7 @@ if mode == "Gamification Mode":
             f"{plant} – Sea share (L1)",
             min_value=0.0,
             max_value=1.0,
-            value=0.20,
+            value=0.50,
             step=0.01,
             key=f"{key_prefix}_sea",
         )
@@ -616,7 +595,7 @@ if mode == "Gamification Mode":
             f"{origin} – Sea share (L2)",
             min_value=0.0,
             max_value=1.0,
-            value=0.20,
+            value=0.50,
             step=0.01,
             key=f"{key_prefix}_sea",
         )
@@ -626,11 +605,13 @@ if mode == "Gamification Mode":
             air = 0.0
             st.write(f"{origin} – Air share (L2): **{_pct(air)}** (fixed because Sea is 100%)")
         else:
+            # Default to 50-50-0 (sea-air-road)
+            air_default = min(0.50, float(rem_after_sea))
             air = st.slider(
                 f"{origin} – Air share (L2)",
                 min_value=0.0,
                 max_value=float(rem_after_sea),
-                value=0.00,
+                value=float(air_default),
                 step=0.01,
                 key=f"{key_prefix}_air",
             )
@@ -641,42 +622,42 @@ if mode == "Gamification Mode":
         # Road is auto remainder
         return {"sea": float(sea), "air": float(air), "road": None}
 
-    if enforce_mode_shares:
-        st.caption(
-            "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
-            
-        )
+    st.caption(
+        "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
+        "(Default: L1=50/50, L2=50/50/0)"
+    )
 
-        # -------------------------
-        # L1: per-plant (air/sea)
-        # -------------------------
-        st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
-        if len(gm_active_plants) == 0:
-            st.info("No active plants selected.")
-        else:
-            gm_mode_share_L1_by_plant = {}
-            for p in gm_active_plants:
-                with st.expander(f"🌱 {p}", expanded=False):
-                    gm_mode_share_L1_by_plant[p] = _l1_share_ui_for_plant(p, key_prefix=f"gm_l1_{p}")
+    # -------------------------
+    # L1: per-plant (air/sea)
+    # -------------------------
+    st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
+    if len(gm_active_plants) == 0:
+        st.info("No active plants selected.")
+    else:
+        gm_mode_share_L1_by_plant = {}
+        for p in gm_active_plants:
+            with st.expander(f"🌱 {p}", expanded=False):
+                gm_mode_share_L1_by_plant[p] = _l1_share_ui_for_plant(p, key_prefix=f"gm_l1_{p}")
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # -----------------------------------------
-        # L2: per-origin (crossdock + new facility)
-        # -----------------------------------------
-        st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
-        active_origins = list(gm_active_crossdocks) + list(gm_active_new_locs)
-        if len(active_origins) == 0:
-            st.info("No active cross-docks or new facilities selected.")
-        else:
-            gm_mode_share_L2_by_origin = {}
-            for o in active_origins:
-                with st.expander(f"🏷️ {o}", expanded=False):
-                    gm_mode_share_L2_by_origin[o] = _l2_share_ui_for_origin(o, key_prefix=f"gm_l2_{o}")
+    # -----------------------------------------
+    # L2: per-origin (crossdock + new facility)
+    # -----------------------------------------
+    st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
+    active_origins = list(gm_active_crossdocks) + list(gm_active_new_locs)
+    if len(active_origins) == 0:
+        st.info("No active cross-docks or new facilities selected.")
+    else:
+        gm_mode_share_L2_by_origin = {}
+        for o in active_origins:
+            with st.expander(f"🏷️ {o}", expanded=False):
+                gm_mode_share_L2_by_origin[o] = _l2_share_ui_for_origin(o, key_prefix=f"gm_l2_{o}")
 
-        # Ensure required modes are enabled in the mode lists (except road on L1)
-        gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "sea"})
-        gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "sea", "road"})
+    # Ensure required modes are enabled in the mode lists (except road on L1)
+    # (Mode-share constraints require these variables to exist.)
+    gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "sea"})
+    gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "sea", "road"})
 
     st.session_state["gm_mode_share_L1_by_plant"] = gm_mode_share_L1_by_plant
     st.session_state["gm_mode_share_L2_by_origin"] = gm_mode_share_L2_by_origin
@@ -700,10 +681,15 @@ st.subheader("📊 Scenario Parameters")
 
 co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 
-model_choice = st.selectbox(
-    "Optimization model:",
-    ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
-)
+# In Gamification Mode we always run the parametric MASTER model.
+# Model selection has no effect there, so we hide the selector.
+if mode == "Gamification Mode":
+    model_choice = "SC2F – Allow New Facilities"
+else:
+    model_choice = st.selectbox(
+        "Optimization model:",
+        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
+    )
 
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
@@ -1084,486 +1070,107 @@ if st.button("Run Optimization"):
             
             
             # ================================================================
-            
-            
-            
-            # 🏭 PRODUCTION OUTBOUND (SC2-style)
-            
-            
-            
+            # 🏭 PRODUCTION OUTBOUND PIE CHART
             # ================================================================
-            
-            
-            
             st.markdown("## 🏭 Production Outbound Breakdown")
             
-            
-            
-            
-            
-            
-            
-            # --- total market demand reference ---
-            
-            
-            
-            TOTAL_MARKET_DEMAND = 111000  # units
-            
-            
-            
-            
-            
-            
-            
-            # --- Gather flow variables ---
-            
-            
+            TOTAL_MARKET_DEMAND = 111000
             
             f1_vars = [v for v in model.getVars() if v.VarName.startswith("f1[")]
-            
-            
-            
             f2_2_vars = [v for v in model.getVars() if v.VarName.startswith("f2_2[")]
-            
-            
-            
-            
-            
-            
             
             prod_sources = {}
             
-            
-            
-            
-            
-            
-            
-            # Existing plants (f1)
-            
-            
-            
+            # Existing plants
             for plant in ["Taiwan", "Shanghai"]:
+                total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+                prod_sources[plant] = total
             
-            
-            
-                prod_sources[plant] = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
-            
-            
-            
-            
-            
-            
-            
-            # New European factories (f2_2)
-            
-            
-            
-            new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
-            
-            
-            
-            for fac in new_facilities:
-            
-            
-            
-                prod_sources[fac] = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
-            
-            
-            
-            
-            
-            
-            
-            # --- Compute totals and unmet demand ---
-            
-            
+            # New EU facilities
+            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+                prod_sources[fac] = total
             
             total_produced = sum(prod_sources.values())
-            
-            
-            
             unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
             
-            
-            
-            
-            
-            
-            
             labels = list(prod_sources.keys()) + ["Unmet Demand"]
+            values = list(prod_sources.values()) + [unmet]
             
-            
-            
-            values = [prod_sources[k] for k in prod_sources] + [unmet]
-            
-            
-            
-            percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
-            
-            
-            
-            
-            
-            
-            
-            df_prod = pd.DataFrame({"Source": labels, "Produced (units)": values, "Share (%)": percentages})
-            
-            
-            
-            
-            
-            
+            df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
             
             fig_prod = px.pie(
-            
-            
-            
                 df_prod,
-            
-            
-            
                 names="Source",
-            
-            
-            
-                values="Produced (units)",
-            
-            
-            
+                values="Units Produced",
                 hole=0.3,
-            
-            
-            
-                title="Production Share by Source (Demand Level: 100%)",
-            
-            
-            
+                title="Production Share by Source",
             )
             
-            
-            
-            
-            
-            
-            
-            # Make 'Unmet Demand' grey
-            
-            
-            
-            color_map_prod = {name: color for name, color in zip(df_prod["Source"], px.colors.qualitative.Set2)}
-            
-            
-            
-            color_map_prod["Unmet Demand"] = "lightgrey"
-            
-            
-            
-            
-            
-            
+            color_map = {name: col for name, col in zip(df_prod["Source"], px.colors.qualitative.Set2)}
+            color_map["Unmet Demand"] = "lightgrey"
             
             fig_prod.update_traces(
-            
-            
-            
                 textinfo="label+percent",
-            
-            
-            
                 textfont_size=13,
-            
-            
-            
-                marker=dict(colors=[color_map_prod.get(s, "#CCCCCC") for s in df_prod["Source"]]),
-            
-            
-            
+                marker=dict(colors=[color_map[s] for s in df_prod["Source"]])
             )
-            
-            
             
             fig_prod.update_layout(
-            
-            
-            
                 showlegend=True,
-            
-            
-            
                 height=400,
-            
-            
-            
                 template="plotly_white",
-            
-            
-            
-                margin=dict(l=20, r=20, t=40, b=20),
-            
-            
-            
+                margin=dict(l=20, r=20, t=40, b=20)
             )
             
-            
-            
-            
-            
-            
-            
-            colA, colB, colC = st.columns([2, 1, 1])
-            
-            
-            
-            with colA:
-            
-            
-            
-                st.plotly_chart(fig_prod, use_container_width=True)
-            
-            
-            
-            with colB:
-            
-            
-            
-                st.markdown("#### 📦 Production Outbounds")
-            
-            
-            
-                st.dataframe(df_prod.round(2), use_container_width=True)
-            
-            
-            
-            with colC:
-            
-            
-            
-                st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
-            
-            
-            
-                co2_factors_mfg = pd.DataFrame({
-            
-            
-            
-                    "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-            
-            
-            
-                    "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2],
-            
-            
-            
-                })
-            
-            
-            
-                co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{float(v):.1f}")
-            
-            
-            
-                st.dataframe(co2_factors_mfg, use_container_width=True)
-            
-            
-            
-            
+            st.plotly_chart(fig_prod, use_container_width=True)
+            st.markdown("#### 📦 Production Summary Table")
+            st.dataframe(df_prod.round(2), use_container_width=True)
             
             
             
             # ================================================================
-            
-            
-            
-            # 🚚 CROSS-DOCK OUTBOUND (SC2-style)
-            
-            
-            
+            # 🚚 CROSS-DOCK OUTBOUND PIE CHART
             # ================================================================
-            
-            
-            
             st.markdown("## 🚚 Cross-dock Outbound Breakdown")
-            
-            
-            
-            
-            
-            
             
             f2_vars = [v for v in model.getVars() if v.VarName.startswith("f2[")]
             
-            
-            
-            crossdocks = ["Paris", "Gdansk", "Vienna"]
-            
-            
-            
+            crossdocks = ["Vienna", "Gdansk", "Paris"]
             crossdock_flows = {}
             
-            
-            
             for cd in crossdocks:
+                total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+                crossdock_flows[cd] = total
             
-            
-            
-                crossdock_flows[cd] = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
-            
-            
-            
-            
-            
-            
-            
-            total_outbound_cd = sum(crossdock_flows.values())
-            
-            
-            
-            if total_outbound_cd <= EPS:
-            
-            
-            
-                st.info("No cross-dock activity recorded for this scenario.")
-            
-            
-            
+            if sum(crossdock_flows.values()) == 0:
+                st.info("No cross-dock activity.")
             else:
-            
-            
-            
                 df_crossdock = pd.DataFrame({
-            
-            
-            
                     "Crossdock": list(crossdock_flows.keys()),
-            
-            
-            
                     "Shipped (units)": list(crossdock_flows.values()),
-            
-            
-            
                 })
-            
-            
-            
                 df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
             
-            
-            
-            
-            
-            
-            
                 fig_crossdock = px.pie(
-            
-            
-            
                     df_crossdock,
-            
-            
-            
                     names="Crossdock",
-            
-            
-            
                     values="Shipped (units)",
-            
-            
-            
                     hole=0.3,
-            
-            
-            
-                    title="Cross-dock Outbound Share (Demand Level: 100%)",
-            
-            
-            
+                    title="Cross-dock Outbound Share"
                 )
-            
-            
-            
-            
-            
-            
-            
-                color_map_cd = {name: color for name, color in zip(df_crossdock["Crossdock"], px.colors.qualitative.Pastel)}
-            
-            
-            
-                fig_crossdock.update_traces(
-            
-            
-            
-                    textinfo="label+percent",
-            
-            
-            
-                    textfont_size=13,
-            
-            
-            
-                    marker=dict(colors=[color_map_cd.get(s, "#CCCCCC") for s in df_crossdock["Crossdock"]]),
-            
-            
-            
-                )
-            
-            
             
                 fig_crossdock.update_layout(
-            
-            
-            
                     showlegend=True,
-            
-            
-            
                     height=400,
-            
-            
-            
                     template="plotly_white",
-            
-            
-            
                     margin=dict(l=20, r=20, t=40, b=20),
-            
-            
-            
                 )
             
+                st.plotly_chart(fig_crossdock, use_container_width=True)
             
-            
-            
-            
-            
-            
-                colD, colE = st.columns([2, 1])
-            
-            
-            
-                with colD:
-            
-            
-            
-                    st.plotly_chart(fig_crossdock, use_container_width=True)
-            
-            
-            
-                with colE:
-            
-            
-            
-                    st.markdown("#### 🚚 Cross-dock Outbounds")
-            
-            
-            
-                    st.dataframe(df_crossdock.round(2), use_container_width=True)
-            
-            
-            
-            
+                st.markdown("#### 🚚 Cross-dock Outbound Table")
+                st.dataframe(df_crossdock.round(2), use_container_width=True)
 
 
             # ================================================================
@@ -1609,26 +1216,20 @@ if st.button("Run Optimization"):
                             volcano=volcano_flag,
                             trade_war=trade_flag,
                             tariff_rate=tariff_rate_used,
-                            sourcing_cost=scaled_sourcing_cost,
-                            service_level=service_level,
                             print_results="NO",
                         )
-
                     else:
                         from Scenario_Setting_For_SC1F_uns import run_scenario as run_Uns
                         results_uns, model_uns = run_Uns(
                             CO_2_percentage=co2_pct,
-                            co2_cost_per_ton_New=co2_cost_per_ton_New,
+                            co2_cost_per_ton=co2_cost_per_ton,
                             suez_canal=suez_flag,
                             oil_crises=oil_flag,
                             volcano=volcano_flag,
                             trade_war=trade_flag,
                             tariff_rate=tariff_rate_used,
-                            sourcing_cost=scaled_sourcing_cost,
-                            service_level=service_level,
                             print_results="NO",
                         )
-
 
                     # --------------------------------------------------
                     # SUCCESS DISPLAY (FALLBACK MODEL)
@@ -1782,230 +1383,86 @@ if st.button("Run Optimization"):
                     st.plotly_chart(fig_map, use_container_width=True)
 
                     # ===================================================
-
-                    # 🏭 PRODUCTION OUTBOUND (SC2-style) – Fallback Model
-
+                    # 🏭 PRODUCTION OUTBOUND PIE CHART
                     # ===================================================
-
                     st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
 
-                    
-
-                    TOTAL_MARKET_DEMAND = 111000  # units
-
-                    
-
                     f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
-
                     f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
-
-                    
 
                     prod_sources = {}
 
+                    # Existing plants
                     for plant in ["Taiwan", "Shanghai"]:
+                        total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+                        prod_sources[plant] = total
 
-                        prod_sources[plant] = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+                    # New EU facilities
+                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                        total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+                        prod_sources[fac] = total
 
-                    
-
-                    new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
-
-                    for fac in new_facilities:
-
-                        prod_sources[fac] = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
-
-                    
-
+                    TOTAL_MARKET_DEMAND = 111000
                     total_produced = sum(prod_sources.values())
-
                     unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
 
-                    
-
                     labels = list(prod_sources.keys()) + ["Unmet Demand"]
+                    values = list(prod_sources.values()) + [unmet]
 
-                    values = [prod_sources[k] for k in prod_sources] + [unmet]
-
-                    percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
-
-                    
-
-                    df_prod = pd.DataFrame({"Source": labels, "Produced (units)": values, "Share (%)": percentages})
-
-                    
+                    df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
 
                     fig_prod = px.pie(
-
                         df_prod,
-
                         names="Source",
-
-                        values="Produced (units)",
-
+                        values="Units Produced",
                         hole=0.3,
-
-                        title="Production Share by Source (Fallback Model, Demand Level: 100%)",
-
+                        title="Production Share by Source (Fallback Model)",
                     )
-
-                    
-
-                    color_map_prod = {name: color for name, color in zip(df_prod["Source"], px.colors.qualitative.Set2)}
-
-                    color_map_prod["Unmet Demand"] = "lightgrey"
 
                     fig_prod.update_traces(
-
                         textinfo="label+percent",
-
                         textfont_size=13,
-
-                        marker=dict(colors=[color_map_prod.get(s, "#CCCCCC") for s in df_prod["Source"]]),
-
                     )
 
-                    fig_prod.update_layout(
-
-                        showlegend=True,
-
-                        height=400,
-
-                        template="plotly_white",
-
-                        margin=dict(l=20, r=20, t=40, b=20),
-
-                    )
-
-                    
-
-                    colA, colB, colC = st.columns([2, 1, 1])
-
-                    with colA:
-
-                        st.plotly_chart(fig_prod, use_container_width=True)
-
-                    with colB:
-
-                        st.markdown("#### 📦 Production Outbounds")
-
-                        st.dataframe(df_prod.round(2), use_container_width=True)
-
-                    with colC:
-
-                        st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
-
-                        co2_factors_mfg = pd.DataFrame({
-
-                            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-
-                            "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2],
-
-                        })
-
-                        co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{float(v):.1f}")
-
-                        st.dataframe(co2_factors_mfg, use_container_width=True)
-
-                    
+                    st.plotly_chart(fig_prod, use_container_width=True)
+                    st.dataframe(df_prod.round(2), use_container_width=True)
 
                     # ===================================================
-
-                    # 🚚 CROSS-DOCK OUTBOUND (SC2-style) – Fallback Model
-
+                    # 🚚 CROSS-DOCK OUTBOUND PIE CHART
                     # ===================================================
-
                     st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
-
-                    
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
-                    crossdocks = ["Paris", "Gdansk", "Vienna"]
-
+                    crossdocks = ["Vienna", "Gdansk", "Paris"]
                     crossdock_flows = {}
 
                     for cd in crossdocks:
+                        total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+                        crossdock_flows[cd] = total
 
-                        crossdock_flows[cd] = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
-
-                    
-
-                    total_outbound_cd = sum(crossdock_flows.values())
-
-                    if total_outbound_cd <= EPS:
-
-                        st.info("No cross-dock activity recorded for this scenario.")
-
+                    if sum(crossdock_flows.values()) == 0:
+                        st.info("No cross-dock activity.")
                     else:
-
                         df_crossdock = pd.DataFrame({
-
                             "Crossdock": list(crossdock_flows.keys()),
-
                             "Shipped (units)": list(crossdock_flows.values()),
-
                         })
-
-                        df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
-
-                    
+                        df_crossdock["Share (%)"] = (
+                            df_crossdock["Shipped (units)"] /
+                            df_crossdock["Shipped (units)"].sum()
+                        ) * 100
 
                         fig_crossdock = px.pie(
-
                             df_crossdock,
-
                             names="Crossdock",
-
                             values="Shipped (units)",
-
                             hole=0.3,
-
-                            title="Cross-dock Outbound Share (Fallback Model, Demand Level: 100%)",
-
+                            title="Cross-dock Outbound Share (Fallback Model)",
                         )
 
-                    
-
-                        color_map_cd = {name: color for name, color in zip(df_crossdock["Crossdock"], px.colors.qualitative.Pastel)}
-
-                        fig_crossdock.update_traces(
-
-                            textinfo="label+percent",
-
-                            textfont_size=13,
-
-                            marker=dict(colors=[color_map_cd.get(s, "#CCCCCC") for s in df_crossdock["Crossdock"]]),
-
-                        )
-
-                        fig_crossdock.update_layout(
-
-                            showlegend=True,
-
-                            height=400,
-
-                            template="plotly_white",
-
-                            margin=dict(l=20, r=20, t=40, b=20),
-
-                        )
-
-                    
-
-                        colD, colE = st.columns([2, 1])
-
-                        with colD:
-
-                            st.plotly_chart(fig_crossdock, use_container_width=True)
-
-                        with colE:
-
-                            st.markdown("#### 🚚 Cross-dock Outbounds")
-
-                            st.dataframe(df_crossdock.round(2), use_container_width=True)
-
-                    
+                        st.plotly_chart(fig_crossdock, use_container_width=True)
+                        st.dataframe(df_crossdock.round(2), use_container_width=True)
 
                     # ================================================================
                     # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
