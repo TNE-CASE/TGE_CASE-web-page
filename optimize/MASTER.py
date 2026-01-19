@@ -247,21 +247,29 @@ mode_share_tol=1e-6,
         speed = {"air": 800, "sea": 10, "road": 40}
         std_demand = np.std(list(demand.values()))
 
+        # transportation artık index olduğu için mode sırasını df.index'ten alıyoruz
+        modes = list(df.index)
+
         df["LT (days)"] = [
             np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
-            for m in speed
+            for m in modes
         ]
 
-        z_values = [norm.ppf(m) for m in service_level.values()]
+        # Z ve phi değerlerini de aynı sırayla (df.index sırasıyla) üret
+        z_values = [norm.ppf(service_level[m]) for m in modes]
         phi_values = [norm.pdf(z) for z in z_values]
 
         df["Z-score Φ^-1(α)"] = z_values
         df["Density φ(Φ^-1(α))"] = phi_values
 
         df["SS (€/unit)"] = [
-            np.sqrt(df["LT (days)"][i] + 1) * std_demand * (unit_penaltycost + df["h (€/unit)"][i]) * df["Density φ(Φ^-1(α))"][i]
-            for i in range(len(df["transportation"]))
+            np.sqrt(df.loc[m, "LT (days)"] + 1) * std_demand
+            * (unit_penaltycost + df.loc[m, "h (€/unit)"])
+            * df.loc[m, "Density φ(Φ^-1(α))"]
+            for m in modes
         ]
+
+
  
     
     tau = {m: df.loc[m, "t (€/kg-km)"] for m in df.index}
