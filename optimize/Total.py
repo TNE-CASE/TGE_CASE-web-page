@@ -30,6 +30,18 @@ from collections import defaultdict
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 # ================================================================
 # PAGE CONFIG (only once!)
 # ================================================================
@@ -1072,107 +1084,486 @@ if st.button("Run Optimization"):
             
             
             # ================================================================
-            # 🏭 PRODUCTION OUTBOUND PIE CHART
+            
+            
+            
+            # 🏭 PRODUCTION OUTBOUND (SC2-style)
+            
+            
+            
             # ================================================================
+            
+            
+            
             st.markdown("## 🏭 Production Outbound Breakdown")
             
-            TOTAL_MARKET_DEMAND = 111000
+            
+            
+            
+            
+            
+            
+            # --- total market demand reference ---
+            
+            
+            
+            TOTAL_MARKET_DEMAND = 111000  # units
+            
+            
+            
+            
+            
+            
+            
+            # --- Gather flow variables ---
+            
+            
             
             f1_vars = [v for v in model.getVars() if v.VarName.startswith("f1[")]
+            
+            
+            
             f2_2_vars = [v for v in model.getVars() if v.VarName.startswith("f2_2[")]
+            
+            
+            
+            
+            
+            
             
             prod_sources = {}
             
-            # Existing plants
-            for plant in ["Taiwan", "Shanghai"]:
-                total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
-                prod_sources[plant] = total
             
-            # New EU facilities
-            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
-                total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
-                prod_sources[fac] = total
+            
+            
+            
+            
+            
+            # Existing plants (f1)
+            
+            
+            
+            for plant in ["Taiwan", "Shanghai"]:
+            
+            
+            
+                prod_sources[plant] = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+            
+            
+            
+            
+            
+            
+            
+            # New European factories (f2_2)
+            
+            
+            
+            new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+            
+            
+            
+            for fac in new_facilities:
+            
+            
+            
+                prod_sources[fac] = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+            
+            
+            
+            
+            
+            
+            
+            # --- Compute totals and unmet demand ---
+            
+            
             
             total_produced = sum(prod_sources.values())
+            
+            
+            
             unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
             
-            labels = list(prod_sources.keys()) + ["Unmet Demand"]
-            values = list(prod_sources.values()) + [unmet]
             
-            df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
+            
+            
+            
+            
+            
+            labels = list(prod_sources.keys()) + ["Unmet Demand"]
+            
+            
+            
+            values = [prod_sources[k] for k in prod_sources] + [unmet]
+            
+            
+            
+            percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
+            
+            
+            
+            
+            
+            
+            
+            df_prod = pd.DataFrame({"Source": labels, "Produced (units)": values, "Share (%)": percentages})
+            
+            
+            
+            
+            
+            
             
             fig_prod = px.pie(
+            
+            
+            
                 df_prod,
+            
+            
+            
                 names="Source",
-                values="Units Produced",
+            
+            
+            
+                values="Produced (units)",
+            
+            
+            
                 hole=0.3,
-                title="Production Share by Source",
+            
+            
+            
+                title="Production Share by Source (Demand Level: 100%)",
+            
+            
+            
             )
             
-            color_map = {name: col for name, col in zip(df_prod["Source"], px.colors.qualitative.Set2)}
-            color_map["Unmet Demand"] = "lightgrey"
+            
+            
+            
+            
+            
+            
+            # Make 'Unmet Demand' grey
+            
+            
+            
+            color_map_prod = {name: color for name, color in zip(df_prod["Source"], px.colors.qualitative.Set2)}
+            
+            
+            
+            color_map_prod["Unmet Demand"] = "lightgrey"
+            
+            
+            
+            
+            
+            
             
             fig_prod.update_traces(
+            
+            
+            
                 textinfo="label+percent",
+            
+            
+            
                 textfont_size=13,
-                marker=dict(colors=[color_map[s] for s in df_prod["Source"]])
+            
+            
+            
+                marker=dict(colors=[color_map_prod.get(s, "#CCCCCC") for s in df_prod["Source"]]),
+            
+            
+            
             )
+            
+            
             
             fig_prod.update_layout(
+            
+            
+            
                 showlegend=True,
+            
+            
+            
                 height=400,
+            
+            
+            
                 template="plotly_white",
-                margin=dict(l=20, r=20, t=40, b=20)
+            
+            
+            
+                margin=dict(l=20, r=20, t=40, b=20),
+            
+            
+            
             )
             
-            st.plotly_chart(fig_prod, use_container_width=True)
-            st.markdown("#### 📦 Production Summary Table")
-            st.dataframe(df_prod.round(2), use_container_width=True)
+            
+            
+            
+            
+            
+            
+            colA, colB, colC = st.columns([2, 1, 1])
+            
+            
+            
+            with colA:
+            
+            
+            
+                st.plotly_chart(fig_prod, use_container_width=True)
+            
+            
+            
+            with colB:
+            
+            
+            
+                st.markdown("#### 📦 Production Outbounds")
+            
+            
+            
+                st.dataframe(df_prod.round(2), use_container_width=True)
+            
+            
+            
+            with colC:
+            
+            
+            
+                st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
+            
+            
+            
+                co2_factors_mfg = pd.DataFrame({
+            
+            
+            
+                    "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+            
+            
+            
+                    "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2],
+            
+            
+            
+                })
+            
+            
+            
+                co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{float(v):.1f}")
+            
+            
+            
+                st.dataframe(co2_factors_mfg, use_container_width=True)
+            
+            
+            
+            
             
             
             
             # ================================================================
-            # 🚚 CROSS-DOCK OUTBOUND PIE CHART
+            
+            
+            
+            # 🚚 CROSS-DOCK OUTBOUND (SC2-style)
+            
+            
+            
             # ================================================================
+            
+            
+            
             st.markdown("## 🚚 Cross-dock Outbound Breakdown")
+            
+            
+            
+            
+            
+            
             
             f2_vars = [v for v in model.getVars() if v.VarName.startswith("f2[")]
             
-            crossdocks = ["Vienna", "Gdansk", "Paris"]
+            
+            
+            crossdocks = ["Paris", "Gdansk", "Vienna"]
+            
+            
+            
             crossdock_flows = {}
             
-            for cd in crossdocks:
-                total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
-                crossdock_flows[cd] = total
             
-            if sum(crossdock_flows.values()) == 0:
-                st.info("No cross-dock activity.")
+            
+            for cd in crossdocks:
+            
+            
+            
+                crossdock_flows[cd] = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+            
+            
+            
+            
+            
+            
+            
+            total_outbound_cd = sum(crossdock_flows.values())
+            
+            
+            
+            if total_outbound_cd <= EPS:
+            
+            
+            
+                st.info("No cross-dock activity recorded for this scenario.")
+            
+            
+            
             else:
+            
+            
+            
                 df_crossdock = pd.DataFrame({
+            
+            
+            
                     "Crossdock": list(crossdock_flows.keys()),
+            
+            
+            
                     "Shipped (units)": list(crossdock_flows.values()),
+            
+            
+            
                 })
+            
+            
+            
                 df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
             
+            
+            
+            
+            
+            
+            
                 fig_crossdock = px.pie(
+            
+            
+            
                     df_crossdock,
+            
+            
+            
                     names="Crossdock",
+            
+            
+            
                     values="Shipped (units)",
+            
+            
+            
                     hole=0.3,
-                    title="Cross-dock Outbound Share"
+            
+            
+            
+                    title="Cross-dock Outbound Share (Demand Level: 100%)",
+            
+            
+            
                 )
+            
+            
+            
+            
+            
+            
+            
+                color_map_cd = {name: color for name, color in zip(df_crossdock["Crossdock"], px.colors.qualitative.Pastel)}
+            
+            
+            
+                fig_crossdock.update_traces(
+            
+            
+            
+                    textinfo="label+percent",
+            
+            
+            
+                    textfont_size=13,
+            
+            
+            
+                    marker=dict(colors=[color_map_cd.get(s, "#CCCCCC") for s in df_crossdock["Crossdock"]]),
+            
+            
+            
+                )
+            
+            
             
                 fig_crossdock.update_layout(
+            
+            
+            
                     showlegend=True,
+            
+            
+            
                     height=400,
+            
+            
+            
                     template="plotly_white",
+            
+            
+            
                     margin=dict(l=20, r=20, t=40, b=20),
+            
+            
+            
                 )
             
-                st.plotly_chart(fig_crossdock, use_container_width=True)
             
-                st.markdown("#### 🚚 Cross-dock Outbound Table")
-                st.dataframe(df_crossdock.round(2), use_container_width=True)
+            
+            
+            
+            
+            
+                colD, colE = st.columns([2, 1])
+            
+            
+            
+                with colD:
+            
+            
+            
+                    st.plotly_chart(fig_crossdock, use_container_width=True)
+            
+            
+            
+                with colE:
+            
+            
+            
+                    st.markdown("#### 🚚 Cross-dock Outbounds")
+            
+            
+            
+                    st.dataframe(df_crossdock.round(2), use_container_width=True)
+            
+            
+            
+            
 
 
             # ================================================================
@@ -1391,86 +1782,230 @@ if st.button("Run Optimization"):
                     st.plotly_chart(fig_map, use_container_width=True)
 
                     # ===================================================
-                    # 🏭 PRODUCTION OUTBOUND PIE CHART
+
+                    # 🏭 PRODUCTION OUTBOUND (SC2-style) – Fallback Model
+
                     # ===================================================
+
                     st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
 
+                    
+
+                    TOTAL_MARKET_DEMAND = 111000  # units
+
+                    
+
                     f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
+
                     f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
+
+                    
 
                     prod_sources = {}
 
-                    # Existing plants
                     for plant in ["Taiwan", "Shanghai"]:
-                        total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
-                        prod_sources[plant] = total
 
-                    # New EU facilities
-                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
-                        total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
-                        prod_sources[fac] = total
+                        prod_sources[plant] = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
 
-                    TOTAL_MARKET_DEMAND = 111000
+                    
+
+                    new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+
+                    for fac in new_facilities:
+
+                        prod_sources[fac] = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+
+                    
+
                     total_produced = sum(prod_sources.values())
+
                     unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
 
-                    labels = list(prod_sources.keys()) + ["Unmet Demand"]
-                    values = list(prod_sources.values()) + [unmet]
+                    
 
-                    df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
+                    labels = list(prod_sources.keys()) + ["Unmet Demand"]
+
+                    values = [prod_sources[k] for k in prod_sources] + [unmet]
+
+                    percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
+
+                    
+
+                    df_prod = pd.DataFrame({"Source": labels, "Produced (units)": values, "Share (%)": percentages})
+
+                    
 
                     fig_prod = px.pie(
+
                         df_prod,
+
                         names="Source",
-                        values="Units Produced",
+
+                        values="Produced (units)",
+
                         hole=0.3,
-                        title="Production Share by Source (Fallback Model)",
+
+                        title="Production Share by Source (Fallback Model, Demand Level: 100%)",
+
                     )
+
+                    
+
+                    color_map_prod = {name: color for name, color in zip(df_prod["Source"], px.colors.qualitative.Set2)}
+
+                    color_map_prod["Unmet Demand"] = "lightgrey"
 
                     fig_prod.update_traces(
+
                         textinfo="label+percent",
+
                         textfont_size=13,
+
+                        marker=dict(colors=[color_map_prod.get(s, "#CCCCCC") for s in df_prod["Source"]]),
+
                     )
 
-                    st.plotly_chart(fig_prod, use_container_width=True)
-                    st.dataframe(df_prod.round(2), use_container_width=True)
+                    fig_prod.update_layout(
+
+                        showlegend=True,
+
+                        height=400,
+
+                        template="plotly_white",
+
+                        margin=dict(l=20, r=20, t=40, b=20),
+
+                    )
+
+                    
+
+                    colA, colB, colC = st.columns([2, 1, 1])
+
+                    with colA:
+
+                        st.plotly_chart(fig_prod, use_container_width=True)
+
+                    with colB:
+
+                        st.markdown("#### 📦 Production Outbounds")
+
+                        st.dataframe(df_prod.round(2), use_container_width=True)
+
+                    with colC:
+
+                        st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
+
+                        co2_factors_mfg = pd.DataFrame({
+
+                            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+
+                            "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2],
+
+                        })
+
+                        co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{float(v):.1f}")
+
+                        st.dataframe(co2_factors_mfg, use_container_width=True)
+
+                    
 
                     # ===================================================
-                    # 🚚 CROSS-DOCK OUTBOUND PIE CHART
+
+                    # 🚚 CROSS-DOCK OUTBOUND (SC2-style) – Fallback Model
+
                     # ===================================================
+
                     st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
+
+                    
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
-                    crossdocks = ["Vienna", "Gdansk", "Paris"]
+                    crossdocks = ["Paris", "Gdansk", "Vienna"]
+
                     crossdock_flows = {}
 
                     for cd in crossdocks:
-                        total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
-                        crossdock_flows[cd] = total
 
-                    if sum(crossdock_flows.values()) == 0:
-                        st.info("No cross-dock activity.")
+                        crossdock_flows[cd] = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+
+                    
+
+                    total_outbound_cd = sum(crossdock_flows.values())
+
+                    if total_outbound_cd <= EPS:
+
+                        st.info("No cross-dock activity recorded for this scenario.")
+
                     else:
+
                         df_crossdock = pd.DataFrame({
+
                             "Crossdock": list(crossdock_flows.keys()),
+
                             "Shipped (units)": list(crossdock_flows.values()),
+
                         })
-                        df_crossdock["Share (%)"] = (
-                            df_crossdock["Shipped (units)"] /
-                            df_crossdock["Shipped (units)"].sum()
-                        ) * 100
+
+                        df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
+
+                    
 
                         fig_crossdock = px.pie(
+
                             df_crossdock,
+
                             names="Crossdock",
+
                             values="Shipped (units)",
+
                             hole=0.3,
-                            title="Cross-dock Outbound Share (Fallback Model)",
+
+                            title="Cross-dock Outbound Share (Fallback Model, Demand Level: 100%)",
+
                         )
 
-                        st.plotly_chart(fig_crossdock, use_container_width=True)
-                        st.dataframe(df_crossdock.round(2), use_container_width=True)
+                    
+
+                        color_map_cd = {name: color for name, color in zip(df_crossdock["Crossdock"], px.colors.qualitative.Pastel)}
+
+                        fig_crossdock.update_traces(
+
+                            textinfo="label+percent",
+
+                            textfont_size=13,
+
+                            marker=dict(colors=[color_map_cd.get(s, "#CCCCCC") for s in df_crossdock["Crossdock"]]),
+
+                        )
+
+                        fig_crossdock.update_layout(
+
+                            showlegend=True,
+
+                            height=400,
+
+                            template="plotly_white",
+
+                            margin=dict(l=20, r=20, t=40, b=20),
+
+                        )
+
+                    
+
+                        colD, colE = st.columns([2, 1])
+
+                        with colD:
+
+                            st.plotly_chart(fig_crossdock, use_container_width=True)
+
+                        with colE:
+
+                            st.markdown("#### 🚚 Cross-dock Outbounds")
+
+                            st.dataframe(df_crossdock.round(2), use_container_width=True)
+
+                    
 
                     # ================================================================
                     # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
