@@ -18,6 +18,8 @@ import plotly.express as px
 import streamlit.components.v1 as components
 import gurobipy as gp
 import inspect
+import numpy as np
+from scipy.stats import norm
 
 from sc1_app import run_sc1
 from sc2_app import run_sc2
@@ -440,14 +442,614 @@ def render_cost_emission_distribution(results: dict):
 
         st.plotly_chart(fig_emission, use_container_width=True)
 
+
 # ------------------------------------------------------------
-# Mode selection (Normal vs Gamification)
+# Puzzle Mode (NEW): no optimization, user builds a network and we compute cost/CO2 implications
 # ------------------------------------------------------------
-mode = st.radio("Select mode:", ["Normal Mode", "Gamification Mode"])
+
+def _puzzle_defaults():
+    """Defaults aligned with MASTER.py (kept local to avoid running optimization)."""
+    demand = {
+        "Cologne": 17000,
+        "Antwerp": 9000,
+        "Krakow": 13000,
+        "Kaunas": 19000,
+        "Oslo": 15000,
+        "Dublin": 20000,
+        "Stockholm": 18000,
+    }
+
+    plants_all = ["Taiwan", "Shanghai"]
+    crossdocks_all = ["Vienna", "Gdansk", "Paris"]
+    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+
+    dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
+    handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077,
+                   "Riga": 4.426038462, "LaGomera": 7.0865}
+    handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
+
+    sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+    co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
+
+    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+                        "Helsinki": 35000, "Warsaw": 26500}
+    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+                           "Helsinki": 2.625e6, "Warsaw": 1.9875e6}
+    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+                             "Helsinki": 420000, "Warsaw": 412500}
+    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
+
+    # Transport emission factor (ton CO2 per ton-km)
+    co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+
+    # Per-mode transport cost (€/kg-km)
+    tau = {"air": 0.0105, "sea": 0.0013, "road": 0.0054}
+    unit_inventory_holdingCost = 0.85
+    unit_penaltycost = 1.7
+
+    # Distances (km) — aligned with MASTER defaults
+    dist1 = pd.DataFrame(
+        [[8997.94617146616, 8558.96520835034, 9812.38584027454],
+         [8468.71339377354, 7993.62774285959, 9240.26233801075]],
+        index=["Taiwan", "Shanghai"],
+        columns=["Vienna", "Gdansk", "Paris"],
+    )
+    dist2 = pd.DataFrame(
+        [[220.423995674989, 1019.43140587827, 1098.71652257982, 1262.62587924823],
+         [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
+         [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
+        index=["Vienna", "Gdansk", "Paris"],
+        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+    )
+    dist2_new = pd.DataFrame(
+        [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
+         [98.034644813461, 818.765381327031, 987.72775809091, 1529.9990581232],
+         [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
+         [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
+         [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
+        index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+    )
+    dist3 = pd.DataFrame(
+        [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
+         [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
+         [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
+         [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
+        index=["Pardubice", "Lille", "Riga", "LaGomera"],
+        columns=list(demand.keys()),
+    )
+
+    return {
+        "demand": demand,
+        "plants_all": plants_all,
+        "crossdocks_all": crossdocks_all,
+        "dcs_all": dcs_all,
+        "new_locs_all": new_locs_all,
+        "dc_capacity": dc_capacity,
+        "handling_dc": handling_dc,
+        "handling_crossdock": handling_crossdock,
+        "sourcing_cost": sourcing_cost,
+        "co2_prod_kg_per_unit": co2_prod_kg_per_unit,
+        "new_loc_capacity": new_loc_capacity,
+        "new_loc_openingCost": new_loc_openingCost,
+        "new_loc_operationCost": new_loc_operationCost,
+        "new_loc_CO2": new_loc_CO2,
+        "co2_emission_factor": co2_emission_factor,
+        "tau": tau,
+        "unit_inventory_holdingCost": unit_inventory_holdingCost,
+        "unit_penaltycost": unit_penaltycost,
+        "dist1": dist1,
+        "dist2": dist2,
+        "dist2_new": dist2_new,
+        "dist3": dist3,
+    }
+
+
+def _normalize_shares(raw: dict) -> dict:
+    """Normalize nonnegative shares. If all zeros, return equal shares."""
+    vals = {k: max(float(v), 0.0) for k, v in (raw or {}).items()}
+    s = sum(vals.values())
+    if s <= 1e-12:
+        n = max(len(vals), 1)
+        return {k: 1.0 / n for k in vals}
+    return {k: v / s for k, v in vals.items()}
+
+
+def _lt_ss_table(service_level: float, demand: dict, unit_h: float, unit_penaltycost: float):
+    """Build a small table for LT, SS(€/unit) per mode, aligned with MASTER's logic."""
+    average_distance = 9600
+    speed = {"air": 800, "sea": 10, "road": 40}
+    std_demand = float(np.std(list(demand.values()))) if demand else 0.0
+    modes = ["air", "sea", "road"]
+
+    lt = {}
+    z = {}
+    phi = {}
+    ss = {}
+    for m in modes:
+        mult = 1.2 if m == "sea" else 1.0
+        lt[m] = float(np.round((average_distance * mult) / (speed[m] * 24), 13))
+        z[m] = float(norm.ppf(service_level))
+        phi[m] = float(norm.pdf(z[m]))
+        ss[m] = float(np.sqrt(lt[m] + 1) * std_demand * (unit_penaltycost + unit_h) * phi[m])
+
+    return {"LT (days)": lt, "SS (€/unit)": ss, "h (€/unit)": {m: unit_h for m in modes}}
+
+
+def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dict]:
+    """Return (results, flows) where flows are aggregated per layer/mode for plotting."""
+
+    demand = cfg["demand"]
+    total_demand = float(sum(demand.values()))
+
+    plants = list(sel["plants"])
+    crossdocks = list(sel["crossdocks"])
+    dcs = list(sel["dcs"])
+    new_locs = list(sel["new_locs"])
+
+    # Hard guards (keep UI permissive, but avoid divide-by-zero)
+    if len(plants) == 0:
+        plants = list(cfg["plants_all"])
+    if len(crossdocks) == 0:
+        crossdocks = list(cfg["crossdocks_all"])
+    if len(dcs) == 0:
+        dcs = list(cfg["dcs_all"])
+
+    product_weight_kg = 2.58
+    product_weight_ton = product_weight_kg / 1000.0
+    lastmile_unit_cost = 6.25
+    lastmile_CO2_kg = 2.68
+
+    # Scenario-adjusted parameters
+    tau = dict(cfg["tau"])
+    sourcing_cost = dict(cfg["sourcing_cost"])
+
+    if scen.get("oil_crises", False):
+        for m in tau:
+            tau[m] *= 1.3
+    if scen.get("trade_war", False):
+        tr = float(scen.get("tariff_rate", 1.0))
+        for p in sourcing_cost:
+            sourcing_cost[p] *= tr
+
+    # Total units to fulfill
+    fulfill_pct = float(sel.get("fulfill_pct", 1.0))
+    total_units = total_demand * max(0.0, min(1.0, fulfill_pct))
+
+    # Production split Layer1 vs Layer2
+    share_L1_total = float(sel.get("share_L1_total", 1.0))
+    share_L1_total = max(0.0, min(1.0, share_L1_total))
+    share_L2_total = 1.0 - share_L1_total
+
+    prod_L1_total = total_units * share_L1_total
+    prod_L2_total = total_units * share_L2_total
+
+    # Per-site shares
+    plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
+    plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
+    plant_shares = _normalize_shares(plant_shares)
+
+    new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
+    if new_locs:
+        new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
+        new_shares = _normalize_shares(new_shares)
+
+    plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
+    new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
+
+    # Mode shares (apply scenario blocks)
+    l1_mode_share_by_plant = sel.get("l1_mode_share_by_plant", {})
+    l2_mode_share_by_origin = sel.get("l2_mode_share_by_origin", {})
+    l3_mode_share_by_dc = sel.get("l3_mode_share_by_dc", {})
+
+    def _l1_modes(p):
+        sea = float(l1_mode_share_by_plant.get(p, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        air = 1.0 - sea
+        if scen.get("suez_canal", False):
+            sea = 0.0
+            air = 1.0
+        if scen.get("volcano", False):
+            air = 0.0
+            sea = 1.0
+        return {"air": air, "sea": sea}
+
+    def _l2_modes(o):
+        sea = float(l2_mode_share_by_origin.get(o, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        rem = 1.0 - sea
+        air = float(l2_mode_share_by_origin.get(o, {}).get("air", min(0.5, rem)))
+        air = max(0.0, min(rem, air))
+        road = max(0.0, 1.0 - sea - air)
+        if scen.get("volcano", False):
+            # remove air; re-normalize sea/road
+            air = 0.0
+            s2 = sea + road
+            if s2 <= 1e-12:
+                sea, road = 1.0, 0.0
+            else:
+                sea, road = sea / s2, road / s2
+        return {"air": air, "sea": sea, "road": road}
+
+    def _l3_modes(d):
+        sea = float(l3_mode_share_by_dc.get(d, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        rem = 1.0 - sea
+        air = float(l3_mode_share_by_dc.get(d, {}).get("air", min(0.25, rem)))
+        air = max(0.0, min(rem, air))
+        road = max(0.0, 1.0 - sea - air)
+        if scen.get("volcano", False):
+            air = 0.0
+            s2 = sea + road
+            if s2 <= 1e-12:
+                sea, road = 1.0, 0.0
+            else:
+                sea, road = sea / s2, road / s2
+        return {"air": air, "sea": sea, "road": road}
+
+    # Distances restricted to active nodes
+    dist1 = cfg["dist1"].reindex(index=plants, columns=crossdocks)
+    dist2 = cfg["dist2"].reindex(index=crossdocks, columns=dcs)
+    dist2_new = cfg["dist2_new"].reindex(index=new_locs if new_locs else cfg["new_locs_all"], columns=dcs)
+    dist3 = cfg["dist3"].reindex(index=dcs, columns=list(demand.keys()))
+
+    # New loc variable cost
+    new_loc_unitCost = {loc: (1.0 / cfg["new_loc_capacity"][loc]) * 90000.0 for loc in cfg["new_loc_capacity"]}
+
+    # Inventory table
+    inv_tbl = _lt_ss_table(float(sel.get("service_level", 0.9)), demand, cfg["unit_inventory_holdingCost"], cfg["unit_penaltycost"])
+    total_demand_safe = total_demand if total_demand > 0 else 1.0
+
+    # Flows (store per-layer per-mode totals)
+    flows = {
+        "L1": {"air": 0.0, "sea": 0.0},
+        "L2": {"air": 0.0, "sea": 0.0, "road": 0.0},
+        "L2_new": {"air": 0.0, "sea": 0.0, "road": 0.0},
+        "L3": {"air": 0.0, "sea": 0.0, "road": 0.0},
+    }
+
+    # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
+    transport_L1 = 0.0
+    inv_L1 = 0.0
+    sourcing_L1 = 0.0
+    co2_tr_L1 = {"air": 0.0, "sea": 0.0}
+    for p in plants:
+        mshare = _l1_modes(p)
+        for c in crossdocks:
+            base = plant_prod[p] / float(len(crossdocks))
+            for mo in ["air", "sea"]:
+                q = base * mshare[mo]
+                flows["L1"][mo] += q
+                d_km = float(dist1.loc[p, c])
+                transport_L1 += tau[mo] * d_km * product_weight_kg * q
+                inv_L1 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                sourcing_L1 += sourcing_cost.get(p, 0.0) * q
+                co2_tr_L1[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 2: Crossdocks -> DCs (equal split over DCs)
+    transport_L2 = 0.0
+    inv_L2 = 0.0
+    handling_L2 = 0.0
+    co2_tr_L2 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    # Crossdock inflow from L1 is equal split across crossdocks by construction
+    total_L1 = sum(plant_prod.values())
+    cd_inflow = {c: (total_L1 / float(len(crossdocks))) for c in crossdocks}
+
+    for c in crossdocks:
+        mshare = _l2_modes(c)
+        for d in dcs:
+            base = cd_inflow[c] / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L2"][mo] += q
+                d_km = float(dist2.loc[c, d])
+                transport_L2 += tau[mo] * d_km * product_weight_kg * q
+                inv_L2 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                handling_L2 += cfg["handling_crossdock"].get(c, 0.0) * q
+                co2_tr_L2[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 2 (new): New facilities -> DCs (equal split over DCs)
+    transport_L2_new = 0.0
+    inv_L2_new = 0.0
+    cost_new_var = 0.0
+    cost_new_fixed = 0.0
+    co2_tr_L2_new = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    for n in new_locs:
+        if new_prod.get(n, 0.0) <= 1e-9:
+            continue
+        mshare = _l2_modes(n)
+        cost_new_fixed += cfg["new_loc_openingCost"].get(n, 0.0)  # open if used
+        for d in dcs:
+            base = new_prod[n] / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L2_new"][mo] += q
+                d_km = float(dist2_new.loc[n, d])
+                transport_L2_new += tau[mo] * d_km * product_weight_kg * q
+                inv_L2_new += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                cost_new_var += new_loc_unitCost.get(n, 0.0) * q
+                co2_tr_L2_new[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 3: DCs -> Retailers (each retailer demand split equally over DCs)
+    transport_L3 = 0.0
+    inv_L3 = 0.0
+    handling_L3 = 0.0
+    lastmile_cost = 0.0
+    co2_tr_L3 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    for d in dcs:
+        mshare = _l3_modes(d)
+        for r, dem in demand.items():
+            dem_eff = float(dem) * (total_units / total_demand_safe)
+            base = dem_eff / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L3"][mo] += q
+                d_km = float(dist3.loc[d, r])
+                transport_L3 += tau[mo] * d_km * product_weight_kg * q
+                inv_L3 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                handling_L3 += cfg["handling_dc"].get(d, 0.0) * q
+                lastmile_cost += lastmile_unit_cost * q
+                co2_tr_L3[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Production CO2
+    co2_prod_existing_ton = 0.0
+    for p in plants:
+        co2_prod_existing_ton += (cfg["co2_prod_kg_per_unit"].get(p, 0.0) / 1000.0) * plant_prod[p]
+
+    co2_prod_new_ton = 0.0
+    for n in new_locs:
+        co2_prod_new_ton += (cfg["new_loc_CO2"].get(n, 0.0) / 1000.0) * new_prod.get(n, 0.0)
+
+    co2_tr_air = co2_tr_L1["air"] + co2_tr_L2["air"] + co2_tr_L2_new["air"] + co2_tr_L3["air"]
+    co2_tr_sea = co2_tr_L1["sea"] + co2_tr_L2["sea"] + co2_tr_L2_new["sea"] + co2_tr_L3["sea"]
+    co2_tr_road = co2_tr_L2["road"] + co2_tr_L2_new["road"] + co2_tr_L3["road"]
+
+    co2_lastmile_ton = (lastmile_CO2_kg / 1000.0) * total_units
+    co2_prod_ton = co2_prod_existing_ton + co2_prod_new_ton
+    co2_total = co2_prod_ton + co2_tr_air + co2_tr_sea + co2_tr_road + co2_lastmile_ton
+
+    # CO2 cost (manufacturing only, MASTER-style)
+    co2_cost_per_ton = float(sel.get("co2_cost_per_ton", 37.5))
+    co2_cost_per_ton_new = float(sel.get("co2_cost_per_ton_New", 60.0))
+    co2_cost_existing = co2_cost_per_ton * co2_prod_existing_ton
+    co2_cost_new = co2_cost_per_ton_new * co2_prod_new_ton
+
+    total_transport = transport_L1 + transport_L2 + transport_L2_new + transport_L3
+    total_inventory = inv_L1 + inv_L2 + inv_L2_new + inv_L3
+    total_handling = handling_L2 + handling_L3
+    total_new_locs = cost_new_var + cost_new_fixed
+
+    objective = (
+        sourcing_L1
+        + total_handling
+        + lastmile_cost
+        + (co2_cost_existing + co2_cost_new)
+        + total_transport
+        + total_inventory
+        + total_new_locs
+    )
+
+    # Simple checks (capacity)
+    dc_out = total_units / float(len(dcs))
+    dc_violations = {d: max(0.0, dc_out - float(cfg["dc_capacity"].get(d, 0.0))) for d in dcs}
+
+    results = {
+        "Objective_value": objective,
+        "Transport_L1": transport_L1,
+        "Transport_L2": transport_L2,
+        "Transport_L2_new": transport_L2_new,
+        "Transport_L3": transport_L3,
+        "Sourcing_L1": sourcing_L1,
+        "Handling_L2_total": handling_L2,
+        "Handling_L3": handling_L3,
+        "Inventory_L1": inv_L1,
+        "Inventory_L2": inv_L2,
+        "Inventory_L2_new": inv_L2_new,
+        "Inventory_L3": inv_L3,
+        "Transit Inventory Cost": total_inventory,
+        "CO2_Manufacturing_State1": co2_cost_existing,
+        "CO2_Cost_L2_2": co2_cost_new,
+        "E_air": co2_tr_air,
+        "E_sea": co2_tr_sea,
+        "E_road": co2_tr_road,
+        "E_lastmile": co2_lastmile_ton,
+        "E_production": co2_prod_ton,
+        "CO2_Total": co2_total,
+        "LastMile_Cost": lastmile_cost,
+        "Cost_NewLocs": total_new_locs,
+        "dc_capacity_violations": dc_violations,
+    }
+    return results, flows
+
+
+def _render_puzzle_mode():
+    st.subheader("🧩 Puzzle Mode: Build a Network (No Optimization)")
+    st.markdown(
+        "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
+        "We then **compute cost and CO₂ implications** using the same default data as the MASTER model."
+    )
+
+    cfg = _puzzle_defaults()
+
+    # Scenario events (optional)
+    st.markdown("#### Scenario events")
+    col_ev1, col_ev2 = st.columns(2)
+    with col_ev1:
+        suez = st.checkbox("Suez Canal Blockade (forces L1 sea=0)", value=False, key="pz_suez")
+        oil = st.checkbox("Oil Crisis (transport cost ×1.3)", value=False, key="pz_oil")
+    with col_ev2:
+        volcano = st.checkbox("Volcanic Eruption (no air)", value=False, key="pz_volcano")
+        trade = st.checkbox("Trade War (plant sourcing × tariff)", value=False, key="pz_trade")
+    tariff = 1.0
+    if trade:
+        tariff = st.slider("Tariff multiplier on plant sourcing", 1.0, 2.0, 1.3, 0.05, key="pz_tariff")
+
+    scen = {
+        "suez_canal": suez,
+        "oil_crises": oil,
+        "volcano": volcano,
+        "trade_war": trade,
+        "tariff_rate": tariff,
+    }
+
+    # Node selections
+    st.markdown("#### Facility selection")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.caption("Layer 1 Plants")
+        plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
+    with col2:
+        st.caption("Cross-docks")
+        crossdocks = [c for c in cfg["crossdocks_all"] if st.checkbox(c, value=True, key=f"pz_cd_{c}")]
+    with col3:
+        st.caption("Distribution Centers")
+        dcs = [d for d in cfg["dcs_all"] if st.checkbox(d, value=True, key=f"pz_dc_{d}")]
+    with col4:
+        st.caption("Layer 2 New Facilities")
+        new_locs = [n for n in cfg["new_locs_all"] if st.checkbox(n, value=False, key=f"pz_new_{n}")]
+
+    total_demand = int(sum(cfg["demand"].values()))
+    st.info(f"Total demand (units): **{total_demand:,}**")
+
+    st.markdown("#### Production split")
+    fulfill_pct = st.slider("Demand fulfilled (%)", 0, 100, 100, 1, key="pz_fulfill") / 100.0
+    share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
+
+    st.caption("Layer 1: split across selected plants (we normalize automatically)")
+    plant_shares_raw = {}
+    for p in (plants or cfg["plants_all"]):
+        plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
+
+    if new_locs:
+        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
+        new_shares_raw = {}
+        for n in new_locs:
+            new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
+    else:
+        new_shares_raw = {}
+
+    st.markdown("#### Transport mode shares")
+    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder).")
+
+    st.markdown("**Layer 1 (Plant → Cross-dock)**")
+    l1_mode_share_by_plant = {}
+    for p in (plants or cfg["plants_all"]):
+        sea = st.slider(f"{p} – Sea share (L1)", 0.0, 1.0, 0.5, 0.01, key=f"pz_l1_sea_{p}")
+        l1_mode_share_by_plant[p] = {"sea": float(sea)}
+
+    st.markdown("**Layer 2 (Cross-dock / New → DC)**")
+    l2_mode_share_by_origin = {}
+    for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
+        with st.expander(f"{o}", expanded=False):
+            sea = st.slider("Sea share", 0.0, 1.0, 0.5, 0.01, key=f"pz_l2_sea_{o}")
+            rem = 1.0 - float(sea)
+            air_default = min(0.5, rem)
+            air = st.slider("Air share", 0.0, float(rem), float(air_default), 0.01, key=f"pz_l2_air_{o}")
+            l2_mode_share_by_origin[o] = {"sea": float(sea), "air": float(air)}
+
+    st.markdown("**Layer 3 (DC → Retailer)**")
+    l3_mode_share_by_dc = {}
+    for d in (dcs or cfg["dcs_all"]):
+        with st.expander(f"{d}", expanded=False):
+            sea = st.slider("Sea share", 0.0, 1.0, 0.5, 0.01, key=f"pz_l3_sea_{d}")
+            rem = 1.0 - float(sea)
+            air_default = min(0.25, rem)
+            air = st.slider("Air share", 0.0, float(rem), float(air_default), 0.01, key=f"pz_l3_air_{d}")
+            l3_mode_share_by_dc[d] = {"sea": float(sea), "air": float(air)}
+
+    st.markdown("#### Prices")
+    c1, c2 = st.columns(2)
+    with c1:
+        co2_cost_per_ton = st.number_input("CO₂ cost per ton (existing production, €)", min_value=0.0, value=37.5, step=1.0, key="pz_co2_cost")
+    with c2:
+        co2_cost_per_ton_new = st.number_input("CO₂ cost per ton (new facility production, €)", min_value=0.0, value=60.0, step=1.0, key="pz_co2_cost_new")
+
+    sel = {
+        "plants": plants,
+        "crossdocks": crossdocks,
+        "dcs": dcs,
+        "new_locs": new_locs,
+        "fulfill_pct": fulfill_pct,
+        "share_L1_total": share_L1,
+        "plant_shares": plant_shares_raw,
+        "new_shares": new_shares_raw,
+        "l1_mode_share_by_plant": l1_mode_share_by_plant,
+        "l2_mode_share_by_origin": l2_mode_share_by_origin,
+        "l3_mode_share_by_dc": l3_mode_share_by_dc,
+        "service_level": 0.9,
+        "co2_cost_per_ton": float(co2_cost_per_ton),
+        "co2_cost_per_ton_New": float(co2_cost_per_ton_new),
+    }
+
+    if st.button("Compute Implications", key="pz_run"):
+        results, flows = _compute_puzzle_results(cfg, sel, scen)
+
+        st.success("Computed! ✅")
+        st.metric("💰 Total Cost (Objective, €)", f"{results['Objective_value']:,.2f}")
+
+        st.subheader("🌿 CO₂ Emissions")
+        st.json({
+            "Air": results.get("E_air", 0),
+            "Sea": results.get("E_sea", 0),
+            "Road": results.get("E_road", 0),
+            "Last-mile": results.get("E_lastmile", 0),
+            "Production": results.get("E_production", 0),
+            "Total": results.get("CO2_Total", 0),
+        })
+
+        # Capacity sanity check
+        viol = results.get("dc_capacity_violations", {})
+        if any(v > 1e-6 for v in viol.values()):
+            with st.expander("⚠️ Capacity warnings"):
+                st.write("Some DC capacities are exceeded under equal-allocation assumptions:")
+                st.dataframe(pd.DataFrame({"DC": list(viol.keys()), "Excess units": list(viol.values())}).set_index("DC"))
+
+        # Flow totals by mode
+        st.markdown("## 🚚 Transport Flows by Mode")
+        cL1, cL2, cL2n, cL3 = st.columns(4)
+        with cL1:
+            st.caption("Layer 1")
+            st.metric("✈️ Air", f"{flows['L1']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L1']['sea']:,.0f}")
+        with cL2:
+            st.caption("Layer 2")
+            st.metric("✈️ Air", f"{flows['L2']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L2']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L2']['road']:,.0f}")
+        with cL2n:
+            st.caption("Layer 2 (new)")
+            st.metric("✈️ Air", f"{flows['L2_new']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L2_new']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L2_new']['road']:,.0f}")
+        with cL3:
+            st.caption("Layer 3")
+            st.metric("✈️ Air", f"{flows['L3']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L3']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L3']['road']:,.0f}")
+
+        # Cost + emission distributions (reuse existing renderer)
+        render_cost_emission_distribution(results)
+
+
+# ------------------------------------------------------------
+# Mode selection (Normal vs Gamification vs Puzzle)
+# ------------------------------------------------------------
+mode = st.radio("Select mode:", ["Normal Mode", "Gamification Mode", "Puzzle Mode"])
 
 # default scenario flags
 suez_flag = oil_flag = volcano_flag = trade_flag = False
 tariff_rate_used = 1.0
+
+# ------------------------------------------------------------
+# PUZZLE MODE (no optimization)
+# ------------------------------------------------------------
+if mode == "Puzzle Mode":
+    _render_puzzle_mode()
+    st.stop()
 
 # ------------------------------------------------------------
 # GAMIFICATION MODE LOGIC 
