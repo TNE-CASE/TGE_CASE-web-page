@@ -922,7 +922,7 @@ def _render_puzzle_mode():
     st.info(f"Total demand (units): **{total_demand:,}**")
 
     st.markdown("#### Production split")
-    fulfill_pct = st.slider("Demand fulfilled (%)", 0, 100, 100, 1, key="pz_fulfill") / 100.0
+    fulfill_pct = 100
     share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
 
     st.caption("Layer 1: split across selected plants (we normalize automatically)")
