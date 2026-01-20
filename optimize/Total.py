@@ -614,7 +614,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
             sourcing_cost[p] *= tr
 
     # Total units to fulfill
-    fulfill_pct = float(sel.get("fulfill_pct", 1.0))
+    fulfill_pct = 1.0  # Demand fulfillment slider removed; assume 100%
     total_units = total_demand * max(0.0, min(1.0, fulfill_pct))
 
     # Production split Layer1 vs Layer2
@@ -922,7 +922,6 @@ def _render_puzzle_mode():
     st.info(f"Total demand (units): **{total_demand:,}**")
 
     st.markdown("#### Production split")
-    fulfill_pct = 100
     share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
 
     st.caption("Layer 1: split across selected plants (we normalize automatically)")
@@ -939,35 +938,47 @@ def _render_puzzle_mode():
         new_shares_raw = {}
 
     st.markdown("#### Transport mode shares")
-    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder).")
+    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
     st.markdown("**Layer 1 (Plant → Cross-dock)**")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
-        sea = st.slider(f"{p} – Sea share (L1)", 0.0, 1.0, 0.5, 0.01, key=f"pz_l1_sea_{p}")
+        sea_pct = st.slider(f"{p} – Sea share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_sea_{p}")
+        sea = float(sea_pct) / 100.0
         l1_mode_share_by_plant[p] = {"sea": float(sea)}
 
     st.markdown("**Layer 2 (Cross-dock / New → DC)**")
     l2_mode_share_by_origin = {}
     for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
         with st.expander(f"{o}", expanded=False):
-            sea = st.slider("Sea share", 0.0, 1.0, 0.5, 0.01, key=f"pz_l2_sea_{o}")
-            rem = 1.0 - float(sea)
-            air_default = min(0.5, rem)
-            air = st.slider("Air share", 0.0, float(rem), float(air_default), 0.01, key=f"pz_l2_air_{o}")
+            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l2_sea_{o}")
+            rem_pct = 100 - int(sea_pct)
+            if rem_pct <= 0:
+                air_pct = 0
+                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+            else:
+                air_default_pct = min(50, rem_pct)
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
+            sea = float(sea_pct) / 100.0
+            air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"sea": float(sea), "air": float(air)}
 
     st.markdown("**Layer 3 (DC → Retailer)**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
-            sea = st.slider("Sea share", 0.0, 1.0, 0.5, 0.01, key=f"pz_l3_sea_{d}")
-            rem = 1.0 - float(sea)
-            air_default = min(0.25, rem)
-            air = st.slider("Air share", 0.0, float(rem), float(air_default), 0.01, key=f"pz_l3_air_{d}")
+            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l3_sea_{d}")
+            rem_pct = 100 - int(sea_pct)
+            if rem_pct <= 0:
+                air_pct = 0
+                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+            else:
+                air_default_pct = min(25, rem_pct)
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
+            sea = float(sea_pct) / 100.0
+            air = float(air_pct) / 100.0
             l3_mode_share_by_dc[d] = {"sea": float(sea), "air": float(air)}
     # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
-
     sel = {
         "plants": plants,
         "crossdocks": crossdocks,
@@ -1375,14 +1386,15 @@ if mode == "Gamification Mode":
 
     def _l1_share_ui_for_plant(plant: str, key_prefix: str):
         # Only air/sea; we ask for sea and auto-fill air
-        sea = st.slider(
-            f"{plant} – Sea share (L1)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.50,
-            step=0.01,
+        sea_pct = st.slider(
+            f"{plant} – Sea share (L1) (%)",
+            min_value=0,
+            max_value=100,
+            value=50,
+            step=1,
             key=f"{key_prefix}_sea",
         )
+        sea = float(sea_pct) / 100.0
         air = 1.0 - float(sea)
         st.write(f"{plant} – Air share (L1, auto): **{_pct(air)}**")
         # Use None remainder semantics for robustness on the MASTER side
@@ -1390,14 +1402,15 @@ if mode == "Gamification Mode":
 
     def _l2_share_ui_for_origin(origin: str, key_prefix: str):
         # Ask for sea, then air up to remaining; road is remainder
-        sea = st.slider(
-            f"{origin} – Sea share (L2)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.50,
-            step=0.01,
+        sea_pct = st.slider(
+            f"{origin} – Sea share (L2) (%)",
+            min_value=0,
+            max_value=100,
+            value=50,
+            step=1,
             key=f"{key_prefix}_sea",
         )
+        sea = float(sea_pct) / 100.0
         rem_after_sea = 1.0 - float(sea)
 
         if rem_after_sea <= 1e-12:
@@ -1406,14 +1419,15 @@ if mode == "Gamification Mode":
         else:
             # Default to 50-50-0 (sea-air-road)
             air_default = min(0.50, float(rem_after_sea))
-            air = st.slider(
-                f"{origin} – Air share (L2)",
-                min_value=0.0,
-                max_value=float(rem_after_sea),
-                value=float(air_default),
-                step=0.01,
+            air_pct = st.slider(
+                f"{origin} – Air share (L2) (%)",
+                min_value=0,
+                max_value=int(round(100.0*float(rem_after_sea))),
+                value=int(round(100.0*float(air_default))),
+                step=1,
                 key=f"{key_prefix}_air",
             )
+            air = float(air_pct) / 100.0
 
         road = max(0.0, 1.0 - float(sea) - float(air))
         st.write(f"{origin} – Road share (L2, auto): **{_pct(road)}**")
