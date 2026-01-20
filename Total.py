@@ -1,0 +1,2111 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 28 15:50:25 2025
+
+@author: LENOVO
+"""
+
+# ================================================================
+#  merged_app.py (FINAL)
+# ================================================================
+
+import os
+import random
+import re
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import streamlit.components.v1 as components
+import gurobipy as gp
+import inspect
+import numpy as np
+from scipy.stats import norm
+
+# Gamification mode extracted into a separate module (toggleable)
+from gamification import render_gamification_mode
+
+from sc1_app import run_sc1
+from sc2_app import run_sc2
+from Scenario_Setting_For_SC1F import run_scenario as run_SC1F
+from Scenario_Setting_For_SC2F import run_scenario as run_SC2F
+# MASTER model import (supports mode-share enforcement & parametric versions)
+
+from MASTER import run_scenario_master
+from collections import defaultdict
+
+
+
+# ================================================================
+# PAGE CONFIG (only once!)
+# ================================================================
+st.set_page_config(
+    page_title="Supply Chain Suite",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
+# ================================================================
+# SIDEBAR LOGO (add above navigation)
+# ================================================================
+BASE_DIR = os.path.dirname(__file__)
+LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
+    st.sidebar.markdown("---")  # small separator so menu stays clean
+else:
+    st.sidebar.warning("Logo not found: assets/logo.png")
+
+# ================================================================
+# SIDEBAR NAVIGATION WITH COLLAPSIBLE GROUPS
+# ================================================================
+st.sidebar.title("📌 Navigation")
+
+# Make the two navigation groups mutually exclusive.
+# Otherwise, once a Factory Model page is selected, routing always stops there
+# and the user cannot navigate to the Optimization dashboard.
+def _on_factory_change():
+    st.session_state["optimization_radio"] = None
+
+def _on_optimization_change():
+    st.session_state["factory_radio"] = None
+
+# Collapsible "Factory Model" group
+with st.sidebar.expander("🏭 Factory Model", expanded=True):
+    factory_choice = st.radio(
+        "Select model:",
+        [
+            "SC1 – Existing Facilities",
+            "SC2 – New Facilities"
+        ],
+        index=None,
+        key="factory_radio",
+        on_change=_on_factory_change,
+    )
+
+# Collapsible "Optimization" group
+with st.sidebar.expander("📊 Optimization", expanded=True):
+    opt_choice = st.radio(
+        "Select:",
+        ["Optimization Dashboard"],
+        index=None,
+        key="optimization_radio",
+        on_change=_on_optimization_change,
+    )
+
+# ================================================================
+# ROUTING LOGIC
+# ================================================================
+if factory_choice == "SC1 – Existing Facilities":
+    run_sc1()
+    st.stop()
+
+elif factory_choice == "SC2 – New Facilities":
+    run_sc2()
+    st.stop()
+
+elif opt_choice == "Optimization Dashboard":
+    pass  # Continue into optimization block below
+
+else:
+    st.write("👈 Select a page from the Navigation menu.")
+    st.stop()
+
+# ================================================================
+# OPTIMIZATION DASHBOARD
+# ================================================================
+
+st.title("🌍 Global Supply Chain Optimization (Gurobi)")
+
+# ------------------------------------------------------------
+# Google Analytics Injection (safe)
+# ------------------------------------------------------------
+GA_MEASUREMENT_ID = "G-78BY82MRZ3"
+
+components.html(f"""
+<script>
+(function() {{
+    const targetDoc = window.parent.document;
+
+    const old1 = targetDoc.getElementById("ga-tag");
+    const old2 = targetDoc.getElementById("ga-src");
+    if (old1) old1.remove();
+    if (old2) old2.remove();
+
+    const s1 = targetDoc.createElement('script');
+    s1.id = "ga-src";
+    s1.async = true;
+    s1.src = "https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}";
+    targetDoc.head.appendChild(s1);
+
+    const s2 = targetDoc.createElement('script');
+    s2.id = "ga-tag";
+    s2.innerHTML = `
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {{ dataLayer.push(arguments); }}
+        gtag('js', new Date());
+        gtag('config', '{GA_MEASUREMENT_ID}', {{
+            send_page_view: true
+        }});
+    `;
+    targetDoc.head.appendChild(s2);
+
+    console.log("GA injected successfully");
+}})();
+</script>
+""", height=0)
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+def positive_input(label, default):
+    """Clean numeric input helper."""
+    val_str = st.text_input(label, value=str(default))
+    try:
+        val = float(val_str)
+        return max(val, 0)
+    except:
+        st.warning(f"{label} must be numeric. Using {default}.")
+        return default
+
+
+def run_filtered(func, kwargs: dict):
+    """Call a scenario function with only the kwargs it supports (signature-safe)."""
+    sig = inspect.signature(func)
+    allowed = set(sig.parameters.keys())
+    filtered = {k: v for k, v in kwargs.items() if k in allowed}
+    return func(**filtered)
+
+
+def run_master_filtered(master_kwargs: dict):
+    """Backward-compatible alias for MASTER."""
+    return run_filtered(run_scenario_master, master_kwargs)
+
+    
+# ------------------------------------------------------------
+# Helpers (NEW): compute node activity from flows
+# ------------------------------------------------------------
+EPS = 1e-6
+
+# IMPORTANT: Map displayed City labels -> model facility keys used in variable names
+# Adjust these to match YOUR model naming.
+CITY_TO_KEYS = {
+    # Plants (model keys)
+    "Shanghai": ["Shanghai"],
+    "Taiwan": ["Taiwan"],  
+
+    # Cross-docks 
+    "Paris": ["Paris"],
+    "Gdansk": ["Gdansk"],
+    "Vienna": ["Vienna"],
+
+    # DCs 
+    "Pardubice": ["Pardubice"],
+    "Lille": ["Lille"],
+    "Riga": ["Riga"],
+    "LaGomera": ["LaGomera"],
+
+    # Retailers 
+    "Cologne": ["Cologne"],
+    "Antwerp": ["Antwerp"],
+    "Krakow": ["Krakow"],
+    "Kaunas": ["Kaunas"],
+    "Oslo": ["Oslo"],
+    "Dublin": ["Dublin"],
+    "Stockholm": ["Stockholm"],
+}
+
+def _parse_inside_brackets(varname: str):
+    # "f2[ATVIE,GMZ,air]" -> ["ATVIE","GMZ","air"]
+    i = varname.find("[")
+    j = varname.rfind("]")
+    if i == -1 or j == -1 or j <= i:
+        return None
+    inside = varname[i+1:j]
+    return [x.strip() for x in inside.split(",")]
+
+def compute_key_throughput(model) -> dict:
+    """
+    Returns dict: facility_key -> total flow touching the node (in+out aggregated)
+    Based on f1, f2, f2_2, f3 variable values.
+    """
+    thr = defaultdict(float)
+    for v in model.getVars():
+        n = v.VarName
+
+        if n.startswith("f1[") or n.startswith("f2[") or n.startswith("f2_2[") or n.startswith("f3["):
+            parts = _parse_inside_brackets(n)
+            if not parts or len(parts) < 2:
+                continue
+
+            o, d = parts[0], parts[1]
+            try:
+                x = float(v.X)
+            except Exception:
+                x = 0.0
+
+            if x > EPS:
+                thr[o] += x
+                thr[d] += x
+
+    return thr
+
+def city_is_active(city: str, key_thr: dict) -> bool:
+    keys = CITY_TO_KEYS.get(city, [])
+    return sum(key_thr.get(k, 0.0) for k in keys) > EPS
+
+
+# ------------------------------------------------------------
+# Helpers (NEW): transport flow totals by mode + cost/emission charts
+# ------------------------------------------------------------
+
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return float(default)
+
+
+def sum_flows_by_mode_model(model, prefix: str):
+    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from a Gurobi model."""
+    totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    if model is None:
+        return totals
+
+    for v in model.getVars():
+        n = getattr(v, "VarName", "")
+        if not n.startswith(prefix + "["):
+            continue
+        parts = _parse_inside_brackets(n)
+        if not parts or len(parts) < 3:
+            continue
+        mode = str(parts[-1]).lower()
+        if mode in totals:
+            totals[mode] += _safe_float(getattr(v, "X", 0.0))
+
+    return totals
+
+
+def display_layer_summary_model(model, title: str, prefix: str, include_road: bool = True):
+    totals = sum_flows_by_mode_model(model, prefix)
+    st.markdown(f"### {title}")
+    cols = st.columns(3 if include_road else 2)
+    cols[0].metric("🚢 Sea", f"{totals['sea']:,.0f} units")
+    cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
+    if include_road:
+        cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
+
+    if sum(totals.values()) <= EPS:
+        st.info("No transport activity recorded for this layer.")
+    st.markdown("---")
+
+
+def render_transport_flows_by_mode(model):
+    st.markdown("## 🚚 Transport Flows by Mode")
+    display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
+    display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
+    display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
+    display_layer_summary_model(model, "Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
+
+
+def render_cost_emission_distribution(results: dict):
+    """Replicates the SC1/SC2-style Cost & Emission Distribution charts for optimization outputs."""
+    st.markdown("## 💰 Cost and 🌿 Emission Distribution")
+
+    col1, col2 = st.columns(2)
+
+    # --- Cost Distribution ---
+    with col1:
+        st.subheader("Cost Distribution")
+
+        transport_cost = (
+            _safe_float(results.get("Transport_L1", 0))
+            + _safe_float(results.get("Transport_L2", 0))
+            + _safe_float(results.get("Transport_L2_new", results.get("Transport_L2_new", 0)))
+            + _safe_float(results.get("Transport_L3", 0))
+        )
+        if transport_cost <= 0 and "Transportation Cost" in results:
+            transport_cost = _safe_float(results.get("Transportation Cost", 0))
+
+        sourcing_handling_cost = (
+            _safe_float(results.get("Sourcing_L1", 0))
+            + _safe_float(results.get("Handling_L2_total", 0))
+            + _safe_float(results.get("Handling_L3", 0))
+        )
+        if sourcing_handling_cost <= 0 and "Sourcing/Handling Cost" in results:
+            sourcing_handling_cost = _safe_float(results.get("Sourcing/Handling Cost", 0))
+
+        co2_cost_production = (
+            _safe_float(results.get("CO2_Manufacturing_State1", 0))
+            + _safe_float(results.get("CO2_Cost_L2_2", 0))
+        )
+        if co2_cost_production <= 0:
+            co2_cost_production = _safe_float(results.get("CO2 Cost in Production", results.get("CO2_Cost_in_Production", 0)))
+
+        inventory_cost = (
+            _safe_float(results.get("Inventory_L1", 0))
+            + _safe_float(results.get("Inventory_L2", 0))
+            + _safe_float(results.get("Inventory_L2_new", 0))
+            + _safe_float(results.get("Inventory_L3", 0))
+        )
+        if inventory_cost <= 0 and "Transit Inventory Cost" in results:
+            inventory_cost = _safe_float(results.get("Transit Inventory Cost", 0))
+
+        cost_parts = {
+            "Transportation Cost": transport_cost,
+            "Sourcing/Handling Cost": sourcing_handling_cost,
+            "CO₂ Cost in Production": co2_cost_production,
+            "Inventory Cost": inventory_cost,
+        }
+
+        df_cost_dist = pd.DataFrame({
+            "Category": list(cost_parts.keys()),
+            "Value": list(cost_parts.values()),
+        })
+
+        fig_cost = px.bar(
+            df_cost_dist,
+            x="Category",
+            y="Value",
+            text="Value",
+            color="Category",
+            color_discrete_sequence=["#A7C7E7", "#B0B0B0", "#F8C471", "#5D6D7E"],
+        )
+
+        fig_cost.update_traces(
+            texttemplate="%{text:,.0f}",
+            textposition="outside",
+        )
+        fig_cost.update_layout(
+            template="plotly_white",
+            showlegend=False,
+            xaxis_tickangle=-35,
+            yaxis_title="€",
+            height=400,
+            yaxis_tickformat=",",
+        )
+
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    # --- Emission Distribution ---
+    with col2:
+        st.subheader("Emission Distribution")
+
+        e_air = _safe_float(results.get("E_air", results.get("E_Air", 0)))
+        e_sea = _safe_float(results.get("E_sea", results.get("E_Sea", 0)))
+        e_road = _safe_float(results.get("E_road", results.get("E_Road", 0)))
+        e_last = _safe_float(results.get("E_lastmile", results.get("E_Last-mile", results.get("E_last_mile", 0))))
+        e_total = _safe_float(results.get("CO2_Total", results.get("Total Emissions", 0)))
+
+        e_prod = _safe_float(results.get("E_production", results.get("E_Production", 0)))
+        if e_prod <= 0 and e_total > 0:
+            e_prod = max(e_total - e_air - e_sea - e_road - e_last, 0.0)
+
+        total_transport = e_air + e_sea + e_road
+
+        emission_data = {
+            "Production": e_prod,
+            "Last-mile": e_last,
+            "Air": e_air,
+            "Sea": e_sea,
+            "Road": e_road,
+            "Total Transport": total_transport,
+        }
+
+        df_emission = pd.DataFrame({
+            "Source": list(emission_data.keys()),
+            "Emission (tons)": list(emission_data.values()),
+        })
+
+        fig_emission = px.bar(
+            df_emission,
+            x="Source",
+            y="Emission (tons)",
+            text="Emission (tons)",
+            color="Source",
+            color_discrete_sequence=["#4B8A08", "#2E8B57", "#808080", "#FFD700", "#90EE90", "#000000"],
+        )
+
+        fig_emission.update_traces(
+            texttemplate="%{text:,.2f}",
+            textposition="outside",
+            marker_line_color="black",
+            marker_line_width=0.5,
+        )
+
+        fig_emission.update_layout(
+            template="plotly_white",
+            showlegend=False,
+            xaxis_tickangle=-35,
+            yaxis_title="Tons of CO₂",
+            height=400,
+            yaxis_tickformat=",",
+        )
+
+        st.plotly_chart(fig_emission, use_container_width=True)
+
+
+# ------------------------------------------------------------
+# Puzzle Mode (NEW): no optimization, user builds a network and we compute cost/CO2 implications
+# ------------------------------------------------------------
+
+def _puzzle_defaults():
+    """Defaults aligned with MASTER.py (kept local to avoid running optimization)."""
+    demand = {
+        "Cologne": 17000,
+        "Antwerp": 9000,
+        "Krakow": 13000,
+        "Kaunas": 19000,
+        "Oslo": 15000,
+        "Dublin": 20000,
+        "Stockholm": 18000,
+    }
+
+    plants_all = ["Taiwan", "Shanghai"]
+    crossdocks_all = ["Vienna", "Gdansk", "Paris"]
+    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+
+    dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
+    handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077,
+                   "Riga": 4.426038462, "LaGomera": 7.0865}
+    handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
+
+    sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+    co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
+
+    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+                        "Helsinki": 35000, "Warsaw": 26500}
+    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+                           "Helsinki": 2.625e6, "Warsaw": 1.9875e6}
+    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+                             "Helsinki": 420000, "Warsaw": 412500}
+    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
+
+    # Transport emission factor (ton CO2 per ton-km)
+    co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+
+    # Per-mode transport cost (€/kg-km)
+    tau = {"air": 0.0105, "sea": 0.0013, "road": 0.0054}
+    unit_inventory_holdingCost = 0.85
+    unit_penaltycost = 1.7
+
+    # Distances (km) — aligned with MASTER defaults
+    dist1 = pd.DataFrame(
+        [[8997.94617146616, 8558.96520835034, 9812.38584027454],
+         [8468.71339377354, 7993.62774285959, 9240.26233801075]],
+        index=["Taiwan", "Shanghai"],
+        columns=["Vienna", "Gdansk", "Paris"],
+    )
+    dist2 = pd.DataFrame(
+        [[220.423995674989, 1019.43140587827, 1098.71652257982, 1262.62587924823],
+         [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
+         [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
+        index=["Vienna", "Gdansk", "Paris"],
+        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+    )
+    dist2_new = pd.DataFrame(
+        [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
+         [98.034644813461, 818.765381327031, 987.72775809091, 1529.9990581232],
+         [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
+         [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
+         [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
+        index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+    )
+    dist3 = pd.DataFrame(
+        [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
+         [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
+         [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
+         [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
+        index=["Pardubice", "Lille", "Riga", "LaGomera"],
+        columns=list(demand.keys()),
+    )
+
+    return {
+        "demand": demand,
+        "plants_all": plants_all,
+        "crossdocks_all": crossdocks_all,
+        "dcs_all": dcs_all,
+        "new_locs_all": new_locs_all,
+        "dc_capacity": dc_capacity,
+        "handling_dc": handling_dc,
+        "handling_crossdock": handling_crossdock,
+        "sourcing_cost": sourcing_cost,
+        "co2_prod_kg_per_unit": co2_prod_kg_per_unit,
+        "new_loc_capacity": new_loc_capacity,
+        "new_loc_openingCost": new_loc_openingCost,
+        "new_loc_operationCost": new_loc_operationCost,
+        "new_loc_CO2": new_loc_CO2,
+        "co2_emission_factor": co2_emission_factor,
+        "tau": tau,
+        "unit_inventory_holdingCost": unit_inventory_holdingCost,
+        "unit_penaltycost": unit_penaltycost,
+        "dist1": dist1,
+        "dist2": dist2,
+        "dist2_new": dist2_new,
+        "dist3": dist3,
+    }
+
+
+def _normalize_shares(raw: dict) -> dict:
+    """Normalize nonnegative shares. If all zeros, return equal shares."""
+    vals = {k: max(float(v), 0.0) for k, v in (raw or {}).items()}
+    s = sum(vals.values())
+    if s <= 1e-12:
+        n = max(len(vals), 1)
+        return {k: 1.0 / n for k in vals}
+    return {k: v / s for k, v in vals.items()}
+
+
+def _lt_ss_table(service_level: float, demand: dict, unit_h: float, unit_penaltycost: float):
+    """Build a small table for LT, SS(€/unit) per mode, aligned with MASTER's logic."""
+    average_distance = 9600
+    speed = {"air": 800, "sea": 10, "road": 40}
+    std_demand = float(np.std(list(demand.values()))) if demand else 0.0
+    modes = ["air", "sea", "road"]
+
+    lt = {}
+    z = {}
+    phi = {}
+    ss = {}
+    for m in modes:
+        mult = 1.2 if m == "sea" else 1.0
+        lt[m] = float(np.round((average_distance * mult) / (speed[m] * 24), 13))
+        z[m] = float(norm.ppf(service_level))
+        phi[m] = float(norm.pdf(z[m]))
+        ss[m] = float(np.sqrt(lt[m] + 1) * std_demand * (unit_penaltycost + unit_h) * phi[m])
+
+    return {"LT (days)": lt, "SS (€/unit)": ss, "h (€/unit)": {m: unit_h for m in modes}}
+
+
+def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dict]:
+    """Return (results, flows) where flows are aggregated per layer/mode for plotting."""
+
+    demand = cfg["demand"]
+    total_demand = float(sum(demand.values()))
+
+    plants = list(sel["plants"])
+    crossdocks = list(sel["crossdocks"])
+    dcs = list(sel["dcs"])
+    new_locs = list(sel["new_locs"])
+
+    # Hard guards (keep UI permissive, but avoid divide-by-zero)
+    if len(plants) == 0:
+        plants = list(cfg["plants_all"])
+    if len(crossdocks) == 0:
+        crossdocks = list(cfg["crossdocks_all"])
+    if len(dcs) == 0:
+        dcs = list(cfg["dcs_all"])
+
+    product_weight_kg = 2.58
+    product_weight_ton = product_weight_kg / 1000.0
+    lastmile_unit_cost = 6.25
+    lastmile_CO2_kg = 2.68
+
+    # Scenario-adjusted parameters
+    tau = dict(cfg["tau"])
+    sourcing_cost = dict(cfg["sourcing_cost"])
+
+    if scen.get("oil_crises", False):
+        for m in tau:
+            tau[m] *= 1.3
+    if scen.get("trade_war", False):
+        tr = float(scen.get("tariff_rate", 1.0))
+        for p in sourcing_cost:
+            sourcing_cost[p] *= tr
+
+    # Total units to fulfill
+    fulfill_pct = 1.0  # Demand fulfillment slider removed; assume 100%
+    total_units = total_demand * max(0.0, min(1.0, fulfill_pct))
+
+    # Production split Layer1 vs Layer2
+    share_L1_total = float(sel.get("share_L1_total", 1.0))
+    share_L1_total = max(0.0, min(1.0, share_L1_total))
+    share_L2_total = 1.0 - share_L1_total
+
+    prod_L1_total = total_units * share_L1_total
+    prod_L2_total = total_units * share_L2_total
+
+    # Per-site shares
+    plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
+    plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
+    plant_shares = _normalize_shares(plant_shares)
+
+    new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
+    if new_locs:
+        new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
+        new_shares = _normalize_shares(new_shares)
+
+    plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
+    new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
+
+    # Mode shares (apply scenario blocks)
+    l1_mode_share_by_plant = sel.get("l1_mode_share_by_plant", {})
+    l2_mode_share_by_origin = sel.get("l2_mode_share_by_origin", {})
+    l3_mode_share_by_dc = sel.get("l3_mode_share_by_dc", {})
+
+    def _l1_modes(p):
+        sea = float(l1_mode_share_by_plant.get(p, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        air = 1.0 - sea
+        if scen.get("suez_canal", False):
+            sea = 0.0
+            air = 1.0
+        if scen.get("volcano", False):
+            air = 0.0
+            sea = 1.0
+        return {"air": air, "sea": sea}
+
+    def _l2_modes(o):
+        sea = float(l2_mode_share_by_origin.get(o, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        rem = 1.0 - sea
+        air = float(l2_mode_share_by_origin.get(o, {}).get("air", min(0.5, rem)))
+        air = max(0.0, min(rem, air))
+        road = max(0.0, 1.0 - sea - air)
+        if scen.get("volcano", False):
+            # remove air; re-normalize sea/road
+            air = 0.0
+            s2 = sea + road
+            if s2 <= 1e-12:
+                sea, road = 1.0, 0.0
+            else:
+                sea, road = sea / s2, road / s2
+        return {"air": air, "sea": sea, "road": road}
+
+    def _l3_modes(d):
+        sea = float(l3_mode_share_by_dc.get(d, {}).get("sea", 0.5))
+        sea = max(0.0, min(1.0, sea))
+        rem = 1.0 - sea
+        air = float(l3_mode_share_by_dc.get(d, {}).get("air", min(0.25, rem)))
+        air = max(0.0, min(rem, air))
+        road = max(0.0, 1.0 - sea - air)
+        if scen.get("volcano", False):
+            air = 0.0
+            s2 = sea + road
+            if s2 <= 1e-12:
+                sea, road = 1.0, 0.0
+            else:
+                sea, road = sea / s2, road / s2
+        return {"air": air, "sea": sea, "road": road}
+
+    # Distances restricted to active nodes
+    dist1 = cfg["dist1"].reindex(index=plants, columns=crossdocks)
+    dist2 = cfg["dist2"].reindex(index=crossdocks, columns=dcs)
+    dist2_new = cfg["dist2_new"].reindex(index=new_locs if new_locs else cfg["new_locs_all"], columns=dcs)
+    dist3 = cfg["dist3"].reindex(index=dcs, columns=list(demand.keys()))
+
+    # New loc variable cost
+    new_loc_unitCost = {loc: (1.0 / cfg["new_loc_capacity"][loc]) * 90000.0 for loc in cfg["new_loc_capacity"]}
+
+    # Inventory table
+    inv_tbl = _lt_ss_table(float(sel.get("service_level", 0.9)), demand, cfg["unit_inventory_holdingCost"], cfg["unit_penaltycost"])
+    total_demand_safe = total_demand if total_demand > 0 else 1.0
+
+    # Flows (store per-layer per-mode totals)
+    flows = {
+        "L1": {"air": 0.0, "sea": 0.0},
+        "L2": {"air": 0.0, "sea": 0.0, "road": 0.0},
+        "L2_new": {"air": 0.0, "sea": 0.0, "road": 0.0},
+        "L3": {"air": 0.0, "sea": 0.0, "road": 0.0},
+    }
+
+    # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
+    transport_L1 = 0.0
+    inv_L1 = 0.0
+    sourcing_L1 = 0.0
+    co2_tr_L1 = {"air": 0.0, "sea": 0.0}
+    for p in plants:
+        mshare = _l1_modes(p)
+        for c in crossdocks:
+            base = plant_prod[p] / float(len(crossdocks))
+            for mo in ["air", "sea"]:
+                q = base * mshare[mo]
+                flows["L1"][mo] += q
+                d_km = float(dist1.loc[p, c])
+                transport_L1 += tau[mo] * d_km * product_weight_kg * q
+                inv_L1 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                sourcing_L1 += sourcing_cost.get(p, 0.0) * q
+                co2_tr_L1[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 2: Crossdocks -> DCs (equal split over DCs)
+    transport_L2 = 0.0
+    inv_L2 = 0.0
+    handling_L2 = 0.0
+    co2_tr_L2 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    # Crossdock inflow from L1 is equal split across crossdocks by construction
+    total_L1 = sum(plant_prod.values())
+    cd_inflow = {c: (total_L1 / float(len(crossdocks))) for c in crossdocks}
+
+    for c in crossdocks:
+        mshare = _l2_modes(c)
+        for d in dcs:
+            base = cd_inflow[c] / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L2"][mo] += q
+                d_km = float(dist2.loc[c, d])
+                transport_L2 += tau[mo] * d_km * product_weight_kg * q
+                inv_L2 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                handling_L2 += cfg["handling_crossdock"].get(c, 0.0) * q
+                co2_tr_L2[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 2 (new): New facilities -> DCs (equal split over DCs)
+    transport_L2_new = 0.0
+    inv_L2_new = 0.0
+    cost_new_var = 0.0
+    cost_new_fixed = 0.0
+    co2_tr_L2_new = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    for n in new_locs:
+        if new_prod.get(n, 0.0) <= 1e-9:
+            continue
+        mshare = _l2_modes(n)
+        cost_new_fixed += cfg["new_loc_openingCost"].get(n, 0.0)  # open if used
+        for d in dcs:
+            base = new_prod[n] / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L2_new"][mo] += q
+                d_km = float(dist2_new.loc[n, d])
+                transport_L2_new += tau[mo] * d_km * product_weight_kg * q
+                inv_L2_new += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                cost_new_var += new_loc_unitCost.get(n, 0.0) * q
+                co2_tr_L2_new[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Layer 3: DCs -> Retailers (each retailer demand split equally over DCs)
+    transport_L3 = 0.0
+    inv_L3 = 0.0
+    handling_L3 = 0.0
+    lastmile_cost = 0.0
+    co2_tr_L3 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+
+    for d in dcs:
+        mshare = _l3_modes(d)
+        for r, dem in demand.items():
+            dem_eff = float(dem) * (total_units / total_demand_safe)
+            base = dem_eff / float(len(dcs))
+            for mo in ["air", "sea", "road"]:
+                q = base * mshare[mo]
+                flows["L3"][mo] += q
+                d_km = float(dist3.loc[d, r])
+                transport_L3 += tau[mo] * d_km * product_weight_kg * q
+                inv_L3 += q * (inv_tbl["LT (days)"][mo] * inv_tbl["h (€/unit)"][mo] + inv_tbl["SS (€/unit)"][mo] / total_demand_safe)
+                handling_L3 += cfg["handling_dc"].get(d, 0.0) * q
+                lastmile_cost += lastmile_unit_cost * q
+                co2_tr_L3[mo] += cfg["co2_emission_factor"][mo] * d_km * product_weight_ton * q
+
+    # --- Production CO2
+    co2_prod_existing_ton = 0.0
+    for p in plants:
+        co2_prod_existing_ton += (cfg["co2_prod_kg_per_unit"].get(p, 0.0) / 1000.0) * plant_prod[p]
+
+    co2_prod_new_ton = 0.0
+    for n in new_locs:
+        co2_prod_new_ton += (cfg["new_loc_CO2"].get(n, 0.0) / 1000.0) * new_prod.get(n, 0.0)
+
+    co2_tr_air = co2_tr_L1["air"] + co2_tr_L2["air"] + co2_tr_L2_new["air"] + co2_tr_L3["air"]
+    co2_tr_sea = co2_tr_L1["sea"] + co2_tr_L2["sea"] + co2_tr_L2_new["sea"] + co2_tr_L3["sea"]
+    co2_tr_road = co2_tr_L2["road"] + co2_tr_L2_new["road"] + co2_tr_L3["road"]
+
+    co2_lastmile_ton = (lastmile_CO2_kg / 1000.0) * total_units
+    co2_prod_ton = co2_prod_existing_ton + co2_prod_new_ton
+    co2_total = co2_prod_ton + co2_tr_air + co2_tr_sea + co2_tr_road + co2_lastmile_ton
+
+    # CO2 cost (manufacturing only, MASTER-style)
+    co2_cost_per_ton = float(sel.get("co2_cost_per_ton", 37.5))
+    co2_cost_per_ton_new = float(sel.get("co2_cost_per_ton_New", 60.0))
+    co2_cost_existing = co2_cost_per_ton * co2_prod_existing_ton
+    co2_cost_new = co2_cost_per_ton_new * co2_prod_new_ton
+
+    total_transport = transport_L1 + transport_L2 + transport_L2_new + transport_L3
+    total_inventory = inv_L1 + inv_L2 + inv_L2_new + inv_L3
+    total_handling = handling_L2 + handling_L3
+    total_new_locs = cost_new_var + cost_new_fixed
+
+    objective = (
+        sourcing_L1
+        + total_handling
+        + lastmile_cost
+        + (co2_cost_existing + co2_cost_new)
+        + total_transport
+        + total_inventory
+        + total_new_locs
+    )
+
+    # Simple checks (capacity)
+    dc_out = total_units / float(len(dcs))
+    dc_violations = {d: max(0.0, dc_out - float(cfg["dc_capacity"].get(d, 0.0))) for d in dcs}
+
+    results = {
+        "Objective_value": objective,
+        "Transport_L1": transport_L1,
+        "Transport_L2": transport_L2,
+        "Transport_L2_new": transport_L2_new,
+        "Transport_L3": transport_L3,
+        "Sourcing_L1": sourcing_L1,
+        "Handling_L2_total": handling_L2,
+        "Handling_L3": handling_L3,
+        "Inventory_L1": inv_L1,
+        "Inventory_L2": inv_L2,
+        "Inventory_L2_new": inv_L2_new,
+        "Inventory_L3": inv_L3,
+        "Transit Inventory Cost": total_inventory,
+        "CO2_Manufacturing_State1": co2_cost_existing,
+        "CO2_Cost_L2_2": co2_cost_new,
+        "E_air": co2_tr_air,
+        "E_sea": co2_tr_sea,
+        "E_road": co2_tr_road,
+        "E_lastmile": co2_lastmile_ton,
+        "E_production": co2_prod_ton,
+        "CO2_Total": co2_total,
+        "LastMile_Cost": lastmile_cost,
+        "Cost_NewLocs": total_new_locs,
+        "dc_capacity_violations": dc_violations,
+    }
+
+    # Extra outputs for visualization parity with optimization mode
+    results["puzzle_prod_sources_units"] = {**plant_prod, **new_prod}
+    results["puzzle_unmet_demand_units"] = max(total_demand_safe - total_units, 0.0)
+    results["puzzle_crossdock_out_units"] = dict(cd_inflow)
+
+    return results, flows
+
+
+def _render_puzzle_mode():
+    st.subheader("🧩 Puzzle Mode: Build a Network (No Optimization)")
+    st.markdown(
+        "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
+        "We then **compute cost and CO₂ implications** using the same default data as the MASTER model."
+    )
+
+    cfg = _puzzle_defaults()
+
+    # Scenario events (optional)
+    st.markdown("#### Scenario events")
+    col_ev1, col_ev2 = st.columns(2)
+    with col_ev1:
+        suez = st.checkbox("Suez Canal Blockade (forces L1 sea=0)", value=False, key="pz_suez")
+        oil = st.checkbox("Oil Crisis (transport cost ×1.3)", value=False, key="pz_oil")
+    with col_ev2:
+        volcano = st.checkbox("Volcanic Eruption (no air)", value=False, key="pz_volcano")
+        trade = st.checkbox("Trade War (plant sourcing × tariff)", value=False, key="pz_trade")
+    tariff = 1.0
+    if trade:
+        tariff = st.slider("Tariff multiplier on plant sourcing", 1.0, 2.0, 1.3, 0.05, key="pz_tariff")
+
+    scen = {
+        "suez_canal": suez,
+        "oil_crises": oil,
+        "volcano": volcano,
+        "trade_war": trade,
+        "tariff_rate": tariff,
+    }
+
+    # Node selections
+    st.markdown("#### Facility selection")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.caption("Layer 1 Plants")
+        plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
+    with col2:
+        st.caption("Cross-docks")
+        crossdocks = [c for c in cfg["crossdocks_all"] if st.checkbox(c, value=True, key=f"pz_cd_{c}")]
+    with col3:
+        st.caption("Distribution Centers")
+        dcs = [d for d in cfg["dcs_all"] if st.checkbox(d, value=True, key=f"pz_dc_{d}")]
+    with col4:
+        st.caption("Layer 2 New Facilities")
+        new_locs = [n for n in cfg["new_locs_all"] if st.checkbox(n, value=False, key=f"pz_new_{n}")]
+
+    total_demand = int(sum(cfg["demand"].values()))
+    st.info(f"Total demand (units): **{total_demand:,}**")
+
+    st.markdown("#### Production split")
+    share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
+
+    st.caption("Layer 1: split across selected plants (we normalize automatically)")
+    plant_shares_raw = {}
+    for p in (plants or cfg["plants_all"]):
+        plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
+
+    if new_locs:
+        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
+        new_shares_raw = {}
+        for n in new_locs:
+            new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
+    else:
+        new_shares_raw = {}
+
+    st.markdown("#### Transport mode shares")
+    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder). Shares are set in **percent (%).**")
+
+    st.markdown("**Layer 1 (Plant → Cross-dock)**")
+    l1_mode_share_by_plant = {}
+    for p in (plants or cfg["plants_all"]):
+        sea_pct = st.slider(f"{p} – Sea share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_sea_{p}")
+        sea = float(sea_pct) / 100.0
+        l1_mode_share_by_plant[p] = {"sea": float(sea)}
+
+    st.markdown("**Layer 2 (Cross-dock / New → DC)**")
+    l2_mode_share_by_origin = {}
+    for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
+        with st.expander(f"{o}", expanded=False):
+            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l2_sea_{o}")
+            rem_pct = 100 - int(sea_pct)
+            if rem_pct <= 0:
+                air_pct = 0
+                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+            else:
+                air_default_pct = min(50, rem_pct)
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
+            sea = float(sea_pct) / 100.0
+            air = float(air_pct) / 100.0
+            l2_mode_share_by_origin[o] = {"sea": float(sea), "air": float(air)}
+
+    st.markdown("**Layer 3 (DC → Retailer)**")
+    l3_mode_share_by_dc = {}
+    for d in (dcs or cfg["dcs_all"]):
+        with st.expander(f"{d}", expanded=False):
+            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l3_sea_{d}")
+            rem_pct = 100 - int(sea_pct)
+            if rem_pct <= 0:
+                air_pct = 0
+                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+            else:
+                air_default_pct = min(25, rem_pct)
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
+            sea = float(sea_pct) / 100.0
+            air = float(air_pct) / 100.0
+            l3_mode_share_by_dc[d] = {"sea": float(sea), "air": float(air)}
+    # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
+    # Demand fulfillment slider was removed; we assume 100% fulfillment in computations.
+    sel = {
+        "plants": plants,
+        "crossdocks": crossdocks,
+        "dcs": dcs,
+        "new_locs": new_locs,
+        "share_L1_total": share_L1,
+        "plant_shares": plant_shares_raw,
+        "new_shares": new_shares_raw,
+        "l1_mode_share_by_plant": l1_mode_share_by_plant,
+        "l2_mode_share_by_origin": l2_mode_share_by_origin,
+        "l3_mode_share_by_dc": l3_mode_share_by_dc,
+        "service_level": 0.9,
+    }
+
+    if st.button("Compute Implications", key="pz_run"):
+        results, flows = _compute_puzzle_results(cfg, sel, scen)
+
+        st.success("Computed! ✅")
+
+        c_cost, c_em = st.columns(2)
+        with c_cost:
+            st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
+        with c_em:
+            st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+
+        st.subheader("🌿 CO₂ Emissions")
+        st.json({
+            "Air": results.get("E_air", 0),
+            "Sea": results.get("E_sea", 0),
+            "Road": results.get("E_road", 0),
+            "Last-mile": results.get("E_lastmile", 0),
+            "Production": results.get("E_production", 0),
+            "Total": results.get("CO2_Total", 0),
+        })
+
+
+
+        # ===========================================
+        # 🌍 MAP (Puzzle Mode)
+        # ===========================================
+        st.markdown("## 🌍 Global Supply Chain Map")
+
+        nodes = [
+            ("Plant", 31.230416, 121.473701, "Shanghai"),
+            ("Plant", 23.553100, 121.021100, "Taiwan"),
+            ("Cross-dock", 48.856610, 2.352220, "Paris"),
+            ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
+            ("Cross-dock", 48.208500, 16.372100, "Vienna"),
+            ("DC", 50.040750, 15.776590, "Pardubice"),
+            ("DC", 50.629250, 3.057256, "Lille"),
+            ("DC", 56.946285, 24.105078, "Riga"),
+            ("DC", 28.116667, -17.216667, "LaGomera"),
+            ("Retail", 50.935173, 6.953101, "Cologne"),
+            ("Retail", 51.219890, 4.403460, "Antwerp"),
+            ("Retail", 50.061430, 19.936580, "Krakow"),
+            ("Retail", 54.902720, 23.909610, "Kaunas"),
+            ("Retail", 59.911491, 10.757933, "Oslo"),
+            ("Retail", 53.350140, -6.266155, "Dublin"),
+            ("Retail", 59.329440, 18.068610, "Stockholm"),
+        ]
+
+        # Filter nodes to selected facilities (Retail always shown)
+        selected_cities = set((plants or []) + (crossdocks or []) + (dcs or []))
+        base_nodes = [n for n in nodes if (n[3] in selected_cities) or (n[0] == "Retail")]
+
+        # Add selected new facilities (only if produced > 0)
+        facility_coords = {
+            "Budapest": (47.497913, 19.040236, "Budapest"),
+            "Prague": (50.088040, 14.420760, "Prague"),
+            "Dublin": (53.350140, -6.266155, "Dublin"),
+            "Helsinki": (60.169520, 24.935450, "Helsinki"),
+            "Warsaw": (52.229770, 21.011780, "Warsaw"),
+        }
+
+        prod_src = results.get("puzzle_prod_sources_units", {})
+        for name, (lat, lon, city) in facility_coords.items():
+            if name in (new_locs or []) and float(prod_src.get(name, 0.0)) > 1e-6:
+                base_nodes.append(("New Production Facility", lat, lon, city))
+
+        locations = pd.DataFrame(base_nodes, columns=["Type", "Lat", "Lon", "City"])
+
+        # Event overlays
+        event_nodes = []
+        if scen.get("suez_canal"):
+            event_nodes.append(("Event: Suez Canal Blockade", 30.59, 32.27, "Suez Canal Crisis"))
+        if scen.get("volcano"):
+            event_nodes.append(("Event: Volcano Eruption", 63.63, -19.62, "Volcanic Ash Zone"))
+        if scen.get("oil_crises"):
+            event_nodes.append(("Event: Oil Crisis", 28.60, 47.80, "Oil Supply Shock"))
+        if scen.get("trade_war"):
+            event_nodes.append(("Event: Trade War", 55.00, 60.00, "Trade War Impact Zone"))
+
+        if event_nodes:
+            df_events = pd.DataFrame(event_nodes, columns=["Type", "Lat", "Lon", "City"])
+            locations = pd.concat([locations, df_events], ignore_index=True)
+
+        color_map = {
+            "Plant": "purple",
+            "Cross-dock": "dodgerblue",
+            "DC": "black",
+            "Retail": "red",
+            "New Production Facility": "deepskyblue",
+            "Event: Suez Canal Blockade": "gold",
+            "Event: Volcano Eruption": "orange",
+            "Event: Oil Crisis": "brown",
+            "Event: Trade War": "green",
+        }
+
+        size_map = {
+            "Plant": 15,
+            "Cross-dock": 14,
+            "DC": 16,
+            "Retail": 20,
+            "New Production Facility": 14,
+            "Event: Suez Canal Blockade": 18,
+            "Event: Volcano Eruption": 18,
+            "Event: Oil Crisis": 18,
+            "Event: Trade War": 18,
+        }
+
+        fig_map = px.scatter_geo(
+            locations,
+            lat="Lat",
+            lon="Lon",
+            color="Type",
+            text="City",
+            hover_name="City",
+            color_discrete_map=color_map,
+            projection="natural earth",
+            scope="world",
+            title="Global Supply Chain Structure",
+        )
+
+        for trace in fig_map.data:
+            trace.marker.update(
+                size=size_map.get(trace.name, 12),
+                opacity=0.9,
+                line=dict(width=0.5, color="white"),
+            )
+
+        fig_map.update_geos(
+            showcountries=True,
+            countrycolor="lightgray",
+            showland=True,
+            landcolor="rgb(245,245,245)",
+            fitbounds="locations",
+        )
+
+        fig_map.update_layout(
+            height=600,
+            margin=dict(l=0, r=0, t=40, b=0),
+        )
+
+        st.plotly_chart(fig_map, use_container_width=True)
+
+        # ===========================================
+        # 🏭 PRODUCTION OUTBOUND BREAKDOWN (Puzzle)
+        # ===========================================
+        st.markdown("## 🏭 Production Outbound Breakdown")
+
+        prod_sources = dict(results.get("puzzle_prod_sources_units", {}))
+        unmet_units = float(results.get("puzzle_unmet_demand_units", 0.0))
+
+        labels = list(prod_sources.keys()) + ["Unmet Demand"]
+        values = list(prod_sources.values()) + [unmet_units]
+        df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
+
+        fig_prod = px.pie(
+            df_prod,
+            names="Source",
+            values="Units Produced",
+            hole=0.3,
+            title="Production Share by Source",
+        )
+
+        color_map2 = {name: col for name, col in zip(df_prod["Source"], px.colors.qualitative.Set2)}
+        color_map2["Unmet Demand"] = "lightgrey"
+
+        fig_prod.update_traces(
+            textinfo="label+percent",
+            textfont_size=13,
+            marker=dict(colors=[color_map2[s] for s in df_prod["Source"]]),
+        )
+
+        fig_prod.update_layout(
+            showlegend=True,
+            height=400,
+            template="plotly_white",
+            margin=dict(l=20, r=20, t=40, b=20),
+        )
+
+        st.plotly_chart(fig_prod, use_container_width=True)
+        st.markdown("#### 📦 Production Summary Table")
+        st.dataframe(df_prod.round(2), use_container_width=True)
+
+        # ===========================================
+        # 🚚 CROSS-DOCK OUTBOUND BREAKDOWN (Puzzle)
+        # ===========================================
+        st.markdown("## 🚚 Cross-dock Outbound Breakdown")
+
+        cd_out = results.get("puzzle_crossdock_out_units", {})
+        if not cd_out or sum(cd_out.values()) <= 1e-9:
+            st.info("No cross-dock activity.")
+        else:
+            df_crossdock = pd.DataFrame({
+                "Crossdock": list(cd_out.keys()),
+                "Shipped (units)": list(cd_out.values()),
+            })
+            df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
+
+            fig_crossdock = px.pie(
+                df_crossdock,
+                names="Crossdock",
+                values="Shipped (units)",
+                hole=0.3,
+                title="Cross-dock Outbound Share",
+            )
+
+            fig_crossdock.update_layout(
+                showlegend=True,
+                height=400,
+                template="plotly_white",
+                margin=dict(l=20, r=20, t=40, b=20),
+            )
+
+            st.plotly_chart(fig_crossdock, use_container_width=True)
+            st.markdown("#### 🚚 Cross-dock Outbound Table")
+            st.dataframe(df_crossdock.round(2), use_container_width=True)
+
+        # Capacity sanity check
+        viol = results.get("dc_capacity_violations", {})
+        if any(v > 1e-6 for v in viol.values()):
+            with st.expander("⚠️ Capacity warnings"):
+                st.write("Some DC capacities are exceeded under equal-allocation assumptions:")
+                st.dataframe(pd.DataFrame({"DC": list(viol.keys()), "Excess units": list(viol.values())}).set_index("DC"))
+
+        # Flow totals by mode
+        st.markdown("## 🚚 Transport Flows by Mode")
+        cL1, cL2, cL2n, cL3 = st.columns(4)
+        with cL1:
+            st.caption("Layer 1")
+            st.metric("✈️ Air", f"{flows['L1']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L1']['sea']:,.0f}")
+        with cL2:
+            st.caption("Layer 2")
+            st.metric("✈️ Air", f"{flows['L2']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L2']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L2']['road']:,.0f}")
+        with cL2n:
+            st.caption("Layer 2 (new)")
+            st.metric("✈️ Air", f"{flows['L2_new']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L2_new']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L2_new']['road']:,.0f}")
+        with cL3:
+            st.caption("Layer 3")
+            st.metric("✈️ Air", f"{flows['L3']['air']:,.0f}")
+            st.metric("🚢 Sea", f"{flows['L3']['sea']:,.0f}")
+            st.metric("🚛 Road", f"{flows['L3']['road']:,.0f}")
+
+        # Cost + emission distributions (reuse existing renderer)
+        render_cost_emission_distribution(results)
+
+
+# ------------------------------------------------------------
+# Mode selection (Normal vs Gamification vs Puzzle)
+# ------------------------------------------------------------
+# Toggle Gamification Mode on/off via env var:
+#   ENABLE_GAMIFICATION=1 (default) -> shows Gamification Mode
+#   ENABLE_GAMIFICATION=0          -> hides Gamification Mode
+ENABLE_GAMIFICATION = os.getenv("ENABLE_GAMIFICATION", "1") == "0"
+
+mode_options = ["Normal Mode"]
+if ENABLE_GAMIFICATION:
+    mode_options.append("Gamification Mode")
+mode_options.append("Puzzle Mode")
+
+mode = st.radio("Select mode:", mode_options)
+
+# default scenario flags
+suez_flag = oil_flag = volcano_flag = trade_flag = False
+tariff_rate_used = 1.0
+
+# ------------------------------------------------------------
+# PUZZLE MODE (no optimization)
+# ------------------------------------------------------------
+if mode == "Puzzle Mode":
+    _render_puzzle_mode()
+    st.stop()
+
+# ------------------------------------------------------------
+# GAMIFICATION MODE LOGIC 
+# ------------------------------------------------------------
+if mode == "Gamification Mode":
+    gm_ctx = render_gamification_mode()
+
+    # scenario flags
+    suez_flag = gm_ctx["suez_flag"]
+    oil_flag = gm_ctx["oil_flag"]
+    volcano_flag = gm_ctx["volcano_flag"]
+    trade_flag = gm_ctx["trade_flag"]
+    tariff_rate_used = gm_ctx["tariff_rate_used"]
+
+    # facility lists
+    plants_all = gm_ctx["plants_all"]
+    crossdocks_all = gm_ctx["crossdocks_all"]
+    dcs_all = gm_ctx["dcs_all"]
+    new_locs_all = gm_ctx["new_locs_all"]
+
+    gm_active_plants = gm_ctx["gm_active_plants"]
+    gm_active_crossdocks = gm_ctx["gm_active_crossdocks"]
+    gm_active_dcs = gm_ctx["gm_active_dcs"]
+    gm_active_new_locs = gm_ctx["gm_active_new_locs"]
+    gm_newloc_flag_kwargs = gm_ctx["gm_newloc_flag_kwargs"]
+
+    # modes
+    gm_modes_L1 = gm_ctx["gm_modes_L1"]
+    gm_modes_L2 = gm_ctx["gm_modes_L2"]
+    gm_modes_L3 = gm_ctx["gm_modes_L3"]
+
+# For Normal Mode we keep the default flags (all False, tariff 1.0)
+
+# ------------------------------------------------------------
+# Parameter Inputs
+# ------------------------------------------------------------
+st.subheader("📊 Scenario Parameters")
+
+co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
+
+# In Gamification Mode we always run the parametric MASTER model.
+# Model selection has no effect there, so we hide the selector.
+if mode == "Gamification Mode":
+    model_choice = "SC2F – Allow New Facilities"
+else:
+    model_choice = st.selectbox(
+        "Optimization model:",
+        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
+    )
+
+# Base sourcing costs (same as MASTER defaults)
+BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+
+# Expose sourcing-cost multiplier only for SC2F (and for Gamification Mode / MASTER).
+# For SC1F in Normal Mode, keep the old behavior (no multiplier UI).
+if (mode == "Gamification Mode") or ("SC2F" in model_choice):
+    sourcing_cost_multiplier = st.slider(
+        "Sourcing Cost Multiplier (Layer 1)",
+        min_value=0.5,
+        max_value=4.0,
+        value=1.0,
+        step=0.01,
+        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
+    )
+else:
+    sourcing_cost_multiplier = 1.0
+
+scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
+
+if "service_level" not in st.session_state:
+    st.session_state["service_level"] = 0.90
+
+
+# Only let user edit it in Normal Mode + SC1F (your requirement)
+if (mode == "Normal Mode") and ("SC1F" in model_choice):
+    st.session_state["service_level"] = st.slider(
+        "Service Level",
+        min_value=0.50,
+        max_value=0.99,
+        value=float(st.session_state["service_level"]),
+        step=0.01,
+        help="Used by SC1F and also passed to MASTER (Gamification) for inventory/safety stock logic.",
+    )
+
+# Always use the persisted value everywhere (including MASTER run)
+service_level = float(st.session_state["service_level"])
+
+
+# CO₂ prices are fixed to default values (not user-editable)
+co2_cost_per_ton = 37.5
+co2_cost_per_ton_New = 60.0
+# ------------------------------------------------------------
+# RUN OPTIMIZATION
+# ------------------------------------------------------------
+if st.button("Run Optimization"):
+    with st.spinner("⚙ Optimizing with Gurobi..."):
+        try:
+            # 1) Choose which model to run
+            
+            if mode == "Gamification Mode":
+                # Use the MASTER model (compatible with multiple MASTER variants via kw filtering)
+                master_kwargs = dict(
+                    active_plants=gm_active_plants,
+                    active_crossdocks=gm_active_crossdocks,
+                    # All DCs active (UI no longer allows selecting DCs)
+                    active_dcs=dcs_all,
+                    # Candidate set of new locations (availability controlled via isXXX flags)
+                    active_new_locs=new_locs_all,
+
+                    active_modes_L1=gm_modes_L1,
+                    active_modes_L2=gm_modes_L2,
+                    active_modes_L3=gm_modes_L3,
+
+                    # NEW: enforce transport-mode shares (per-node). None => ignored.
+                    mode_share_L1_by_plant=st.session_state.get("gm_mode_share_L1_by_plant", None),
+                    mode_share_L2_by_origin=st.session_state.get("gm_mode_share_L2_by_origin", None),
+
+                    # Scenario params
+                    CO_2_percentage=co2_pct,
+                    co2_cost_per_ton=co2_cost_per_ton,
+                    co2_cost_per_ton_New=co2_cost_per_ton_New,
+                    suez_canal=suez_flag,
+                    oil_crises=oil_flag,
+                    volcano=volcano_flag,
+                    trade_war=trade_flag,
+                    tariff_rate=tariff_rate_used,
+                    sourcing_cost=scaled_sourcing_cost,
+                    service_level=service_level,
+                    print_results="NO",
+                )
+
+                # Add per-new-location switches (isHUDTG/isCZMCT/...)
+                master_kwargs.update(gm_newloc_flag_kwargs)
+
+                results, model = run_master_filtered(master_kwargs)
+
+                # ------------------------------------------------------------
+                # Benchmarking
+                # ------------------------------------------------------------
+                try:
+                    # Always benchmark against SC2F optimal (Allow New Facilities)
+                    benchmark_label = "SC2F Optimal (Allow New Facilities)"
+                
+                    # Use the same CO₂ price the user entered
+                    # - SC1F seçiliyse: co2_cost_per_ton var
+                    # - SC2F seçiliyse: co2_cost_per_ton_New var
+                    bench_co2_new      = co2_cost_per_ton_New if "SC2F" in model_choice else co2_cost_per_ton
+                
+                    bench_kwargs = dict(
+                        CO_2_percentage=co2_pct,
+                        co2_cost_per_ton_New=bench_co2_new,
+                        suez_canal=suez_flag,
+                        oil_crises=oil_flag,
+                        volcano=volcano_flag,
+                        trade_war=trade_flag,
+                        tariff_rate=tariff_rate_used,
+                        sourcing_cost=scaled_sourcing_cost,
+                        print_results="NO",
+                        service_level=service_level,
+                    )
+
+                    benchmark_results, benchmark_model = run_filtered(run_SC2F, bench_kwargs)
+                
+                except Exception as _bench_e:
+                    benchmark_results = None
+                    benchmark_model = None
+                    benchmark_label = None
+                    st.warning(f"Benchmark run failed (showing only gamification results). Reason: {_bench_e}")
+                
+                
+                
+
+            elif "SC1F" in model_choice:
+                # Existing facilities only
+                sc1_kwargs = dict(
+                    CO_2_percentage=co2_pct,
+                    co2_cost_per_ton=co2_cost_per_ton,
+                    suez_canal=suez_flag,
+                    oil_crises=oil_flag,
+                    volcano=volcano_flag,
+                    trade_war=trade_flag,
+                    tariff_rate=tariff_rate_used,
+                    sourcing_cost=scaled_sourcing_cost,
+                    print_results="NO",
+                    service_level=service_level,
+                )
+                results, model = run_filtered(run_SC1F, sc1_kwargs)
+            else:
+                # Allow new EU facilities (SC2F)
+                sc2_kwargs = dict(
+                    CO_2_percentage=co2_pct,
+                    co2_cost_per_ton_New=co2_cost_per_ton_New,
+                    suez_canal=suez_flag,
+                    oil_crises=oil_flag,
+                    volcano=volcano_flag,
+                    trade_war=trade_flag,
+                    tariff_rate=tariff_rate_used,
+                    sourcing_cost=scaled_sourcing_cost,
+                    print_results="NO",
+                    service_level=service_level,
+                )
+                results, model = run_filtered(run_SC2F, sc2_kwargs)
+
+
+            st.success("Optimization complete! ✅" )
+
+            # ===========================================
+            # Objective + Emissions
+            # ===========================================
+            c_cost, c_em = st.columns(2)
+
+            with c_cost:
+                st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
+            with c_em:
+                st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+
+            # ------------------------------------------------------------
+            # Show gap vs optimal (only in Gamification Mode)
+            # ------------------------------------------------------------
+            if mode == "Gamification Mode" and benchmark_results is not None:
+                try:
+                    stud_obj = float(results.get("Objective_value", 0.0))
+                    opt_obj  = float(benchmark_results.get("Objective_value", 0.0))
+                    gap = stud_obj - opt_obj
+                    gap_pct = (gap / opt_obj * 100.0) if opt_obj != 0 else 0.0
+            
+                    st.subheader("🏁 Gap vs Optimal")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Your (Gamification) Objective (€)", f"{stud_obj:,.2f}")
+                    c2.metric(benchmark_label or "Optimal Objective (€)", f"{opt_obj:,.2f}")
+                    c3.metric("Gap (You − Optimal)", f"{gap:,.2f}", delta=f"{gap_pct:+.2f}%")
+            
+                    with st.expander("See benchmark breakdown"):
+                        st.json({
+                            "Benchmark": benchmark_label,
+                            "Benchmark Objective": opt_obj,
+                            "Your Objective": stud_obj,
+                            "Absolute Gap": gap,
+                            "Gap (%)": gap_pct,
+                        })
+                except Exception:
+                    pass
+
+
+
+
+
+            st.subheader("🌿 CO₂ Emissions")
+            st.json({
+                "Air": results.get("E_air", 0),
+                "Sea": results.get("E_sea", 0),
+                "Road": results.get("E_road", 0),
+                "Last-mile": results.get("E_lastmile", 0),
+                "Production": results.get("E_production", 0),
+                "Total": results.get("CO2_Total", 0),
+            })
+
+            # ===========================================
+            # 🌍 MAP (no more pd errors!)
+            # ===========================================
+            st.markdown("## 🌍 Global Supply Chain Map")
+
+            nodes = [
+                ("Plant", 31.230416, 121.473701, "Shanghai"),
+                ("Plant", 23.553100, 121.021100, "Taiwan"),
+                ("Cross-dock", 48.856610, 2.352220, "Paris"),
+                ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
+                ("Cross-dock", 48.208500, 16.372100, "Vienna"),
+                ("DC", 50.040750, 15.776590, "Pardubice"),
+                ("DC", 50.629250, 3.057256, "Lille"),
+                ("DC", 56.946285, 24.105078, "Riga"),
+                ("DC", 28.116667, -17.216667, "LaGomera"),
+                ("Retail", 50.935173, 6.953101, "Cologne"),
+                ("Retail", 51.219890, 4.403460, "Antwerp"),
+                ("Retail", 50.061430, 19.936580, "Krakow"),
+                ("Retail", 54.902720, 23.909610, "Kaunas"),
+                ("Retail", 59.911491, 10.757933, "Oslo"),
+                ("Retail", 53.350140, -6.266155, "Dublin"),
+                ("Retail", 59.329440, 18.068610, "Stockholm"),
+            ]
+
+
+            locations = pd.DataFrame(nodes, columns=["Type", "Lat", "Lon", "City"])
+
+            # ================================================================
+            # 🌍 FULL GLOBAL MAP (with new facilities + events)
+            # ================================================================
+            
+            # New facilities (only if active)
+            facility_coords = {
+                "Budapest": (47.497913, 19.040236, "Budapest"),
+                "Prague": (50.088040, 14.420760, "Prague"),
+                "Dublin": (53.350140, -6.266155, "Dublin"),
+                "Helsinki": (60.169520, 24.935450, "Helsinki"),
+                "Warsaw": (52.229770, 21.011780, "Warsaw"),
+            }
+
+            
+            for name, (lat, lon, city) in facility_coords.items():
+                var = model.getVarByName(f"f2_2_bin[{name}]")
+                if var is not None and var.X > 0.5:
+                    nodes.append(("New Production Facility", lat, lon, city))
+            
+            # Build DataFrame
+            locations = pd.DataFrame(nodes, columns=["Type", "Lat", "Lon", "City"])
+            
+            # ================================================================
+            # Add EVENT MARKERS to the map
+            # ================================================================
+            event_nodes = []
+            
+            if suez_flag:
+                event_nodes.append(("Event: Suez Canal Blockade", 30.59, 32.27, "Suez Canal Crisis"))
+            
+            if volcano_flag:
+                event_nodes.append(("Event: Volcano Eruption", 63.63, -19.62, "Volcanic Ash Zone"))
+            
+            if oil_flag:
+                event_nodes.append(("Event: Oil Crisis", 28.60, 47.80, "Oil Supply Shock"))
+            
+            if trade_flag:
+                event_nodes.append(("Event: Trade War", 55.00, 60.00, "Trade War Impact Zone"))
+            
+            if event_nodes:
+                df_events = pd.DataFrame(event_nodes, columns=["Type", "Lat", "Lon", "City"])
+                locations = pd.concat([locations, df_events], ignore_index=True)
+            
+            # ================================================================
+            # Marker colors & sizes
+            # ================================================================
+            color_map = {
+                "Plant": "purple",
+                "Cross-dock": "dodgerblue",
+                "DC": "black",
+                "Retail": "red",
+                "New Production Facility": "deepskyblue",
+                "Event: Suez Canal Blockade": "gold",
+                "Event: Volcano Eruption": "orange",
+                "Event: Oil Crisis": "brown",
+                "Event: Trade War": "green",
+            }
+            
+            size_map = {
+                "Plant": 15,
+                "Cross-dock": 14,
+                "DC": 16,
+                "Retail": 20,
+                "New Production Facility": 14,
+                "Event: Suez Canal Blockade": 18,
+                "Event: Volcano Eruption": 18,
+                "Event: Oil Crisis": 18,
+                "Event: Trade War": 18,
+            }
+
+            
+            # ================================================================
+            # Build MAP
+            # ================================================================
+            fig_map = px.scatter_geo(
+                locations,
+                lat="Lat",
+                lon="Lon",
+                color="Type",
+                text="City",
+                hover_name="City",
+                color_discrete_map=color_map,
+                projection="natural earth",
+                scope="world",
+                title="Global Supply Chain Structure",
+            )
+            
+            # compute activity once
+            key_thr = compute_key_throughput(model)
+            
+            for trace in fig_map.data:
+                trace.marker.update(
+                    size=size_map.get(trace.name, 12),
+                    line=dict(width=0.5, color="white"),
+                )
+            
+                if trace.name.startswith("Event:") or trace.name == "New Production Facility":
+                    trace.marker.update(opacity=0.9)
+                    continue
+            
+                if hasattr(trace, "text") and trace.text is not None:
+                    per_point_opacity = [
+                        0.9 if city_is_active(city, key_thr) else 0.25
+                        for city in trace.text
+                    ]
+                    trace.marker.update(opacity=per_point_opacity)
+                else:
+                    trace.marker.update(opacity=0.9)
+
+            
+                # Events and New Production Facility -> always bright (unchanged behaviour)
+                if trace.name.startswith("Event:") or trace.name == "New Production Facility":
+                    trace.marker.update(opacity=0.9)
+                    continue
+            
+                # For other facility types: per-point opacity based on City activity
+                # px.scatter_geo puts city labels into trace.text
+                if hasattr(trace, "text") and trace.text is not None:
+                    per_point_opacity = [
+                        0.9 if city_is_active(city, key_thr) else 0.25
+                        for city in trace.text
+                    ]
+                    trace.marker.update(opacity=per_point_opacity)
+                else:
+                    trace.marker.update(opacity=0.9)
+
+            
+            fig_map.update_geos(
+                showcountries=True,
+                countrycolor="lightgray",
+                showland=True,
+                landcolor="rgb(245,245,245)",
+                fitbounds="locations",
+            )
+            
+            fig_map.update_layout(
+                height=600,
+                margin=dict(l=0, r=0, t=40, b=0),
+            )
+            
+            st.plotly_chart(fig_map, use_container_width=True)
+            
+            
+            
+            # ================================================================
+            # 🏭 PRODUCTION OUTBOUND PIE CHART
+            # ================================================================
+            st.markdown("## 🏭 Production Outbound Breakdown")
+            
+            TOTAL_MARKET_DEMAND = 111000
+            
+            f1_vars = [v for v in model.getVars() if v.VarName.startswith("f1[")]
+            f2_2_vars = [v for v in model.getVars() if v.VarName.startswith("f2_2[")]
+            
+            prod_sources = {}
+            
+            # Existing plants
+            for plant in ["Taiwan", "Shanghai"]:
+                total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+                prod_sources[plant] = total
+            
+            # New EU facilities
+            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+                prod_sources[fac] = total
+            
+            total_produced = sum(prod_sources.values())
+            unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
+            
+            labels = list(prod_sources.keys()) + ["Unmet Demand"]
+            values = list(prod_sources.values()) + [unmet]
+            
+            df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
+            
+            fig_prod = px.pie(
+                df_prod,
+                names="Source",
+                values="Units Produced",
+                hole=0.3,
+                title="Production Share by Source",
+            )
+            
+            color_map = {name: col for name, col in zip(df_prod["Source"], px.colors.qualitative.Set2)}
+            color_map["Unmet Demand"] = "lightgrey"
+            
+            fig_prod.update_traces(
+                textinfo="label+percent",
+                textfont_size=13,
+                marker=dict(colors=[color_map[s] for s in df_prod["Source"]])
+            )
+            
+            fig_prod.update_layout(
+                showlegend=True,
+                height=400,
+                template="plotly_white",
+                margin=dict(l=20, r=20, t=40, b=20)
+            )
+            
+            st.plotly_chart(fig_prod, use_container_width=True)
+            st.markdown("#### 📦 Production Summary Table")
+            st.dataframe(df_prod.round(2), use_container_width=True)
+            
+            
+            
+            # ================================================================
+            # 🚚 CROSS-DOCK OUTBOUND PIE CHART
+            # ================================================================
+            st.markdown("## 🚚 Cross-dock Outbound Breakdown")
+            
+            f2_vars = [v for v in model.getVars() if v.VarName.startswith("f2[")]
+            
+            crossdocks = ["Vienna", "Gdansk", "Paris"]
+            crossdock_flows = {}
+            
+            for cd in crossdocks:
+                total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+                crossdock_flows[cd] = total
+            
+            if sum(crossdock_flows.values()) == 0:
+                st.info("No cross-dock activity.")
+            else:
+                df_crossdock = pd.DataFrame({
+                    "Crossdock": list(crossdock_flows.keys()),
+                    "Shipped (units)": list(crossdock_flows.values()),
+                })
+                df_crossdock["Share (%)"] = df_crossdock["Shipped (units)"] / df_crossdock["Shipped (units)"].sum() * 100
+            
+                fig_crossdock = px.pie(
+                    df_crossdock,
+                    names="Crossdock",
+                    values="Shipped (units)",
+                    hole=0.3,
+                    title="Cross-dock Outbound Share"
+                )
+            
+                fig_crossdock.update_layout(
+                    showlegend=True,
+                    height=400,
+                    template="plotly_white",
+                    margin=dict(l=20, r=20, t=40, b=20),
+                )
+            
+                st.plotly_chart(fig_crossdock, use_container_width=True)
+            
+                st.markdown("#### 🚚 Cross-dock Outbound Table")
+                st.dataframe(df_crossdock.round(2), use_container_width=True)
+
+
+            # ================================================================
+            # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
+            # ================================================================
+            render_transport_flows_by_mode(model)
+
+            # ================================================================
+            # 💰🌿 Cost & Emission Distribution (match SC1/SC2 apps)
+            # ================================================================
+            render_cost_emission_distribution(results)
+
+
+        except Exception as e:
+            # --------------------------------------------------
+            # PRIMARY MODEL FAILED
+            # --------------------------------------------------
+            st.error(f"❌ Primary optimization failed: {e}")
+
+            # In Gamification Mode we DO NOT run SC1F/SC2F_uns,
+            # because they ignore the student's facility/mode choices.
+            if mode == "Gamification Mode":
+                st.warning(
+                    "Fallback models are only defined for SC1F/SC2F. "
+                    "In Gamification Mode, please adjust your facility / mode "
+                    "selection or relax the CO₂ target and try again."
+                )
+
+            else:
+                st.warning("⚠ Running fallback model to compute maximum satisfiable demand...")
+
+                try:
+                    # --------------------------------------------------
+                    # CHOOSE CORRECT FALLBACK MODEL
+                    # --------------------------------------------------
+                    if "SC2F" in model_choice:
+                        from Scenario_Setting_For_SC2F_uns import run_scenario as run_Uns
+                        results_uns, model_uns = run_Uns(
+                            CO_2_percentage=co2_pct,
+                            co2_cost_per_ton_New=co2_cost_per_ton_New,
+                            suez_canal=suez_flag,
+                            oil_crises=oil_flag,
+                            volcano=volcano_flag,
+                            trade_war=trade_flag,
+                            tariff_rate=tariff_rate_used,
+                            print_results="NO",
+                        )
+                    else:
+                        from Scenario_Setting_For_SC1F_uns import run_scenario as run_Uns
+                        results_uns, model_uns = run_Uns(
+                            CO_2_percentage=co2_pct,
+                            co2_cost_per_ton=co2_cost_per_ton,
+                            suez_canal=suez_flag,
+                            oil_crises=oil_flag,
+                            volcano=volcano_flag,
+                            trade_war=trade_flag,
+                            tariff_rate=tariff_rate_used,
+                            print_results="NO",
+                        )
+
+                    # --------------------------------------------------
+                    # SUCCESS DISPLAY (FALLBACK MODEL)
+                    # --------------------------------------------------
+                    st.success("Fallback optimization successful! ✅")
+
+                    # ===================================================
+                    # 📦 MAXIMUM SATISFIABLE DEMAND
+                    # ===================================================
+                    st.markdown("## 📦 Maximum Satisfiable Demand (Fallback Model)")
+
+                    st.metric(
+                        "Satisfied Demand (%)",
+                        f"{results_uns['Satisfied_Demand_pct'] * 100:.2f}%"
+                    )
+
+                    st.metric(
+                        "Satisfied Demand (Units)",
+                        f"{results_uns['Satisfied_Demand_units']:,.0f}"
+                    )
+
+                    # ===================================================
+                    # 💰 OBJECTIVE
+                    # ===================================================
+                    st.markdown("## 💰 Objective Value (Excluding Slack Penalty)")
+                    st.metric(
+                        "Objective (€)",
+                        f"{results_uns['Objective_value']:,.2f}"
+                    )
+
+                    # ===================================================
+                    # 🌍 MAP
+                    # ===================================================
+                    st.markdown("## 🌍 Global Supply Chain Map (Fallback Model)")
+
+                    nodes = [
+                    ("Plant", 31.23, 121.47, "Shanghai"),
+                    ("Plant", 22.32, 114.17, "Taiwan"),
+                    ("Cross-dock", 48.85, 2.35, "Paris"),
+                    ("Cross-dock", 50.11, 8.68, "Gdansk"),
+                    ("Cross-dock", 37.98, 23.73, "Vienna"),
+                    ("DC", 47.50, 19.04, "Pardubice"),
+                    ("DC", 48.14, 11.58, "Lille"),
+                    ("DC", 46.95, 7.44, "Riga"),
+                    ("DC", 45.46, 9.19, "LaGomera"),
+                    ("Retail", 55.67, 12.57, "Cologne"),
+                    ("Retail", 53.35, -6.26, "Antwerp"),
+                    ("Retail", 51.50, -0.12, "Krakow"),
+                    ("Retail", 49.82, 19.08, "Kaunas"),
+                    ("Retail", 45.76, 4.83, "Oslo"),
+                    ("Retail", 43.30, 5.37, "Dublin"),
+                    ("Retail", 40.42, -3.70, "Stockholm"),
+                    ]
+
+                    # Add new facilities from fallback model
+                    facility_coords = {
+                        "Budapest": (49.61, 6.13, "Budapest"),
+                        "Prague": (44.83, 20.42, "Prague"),
+                        "Dublin": (47.09, 16.37, "Dublin"),
+                        "Helsinki": (50.45, 14.50, "Helsinki"),
+                        "Warsaw": (42.70, 12.65, "Warsaw"),
+                    }
+
+                    for name, (lat, lon, city) in facility_coords.items():
+                        var = model_uns.getVarByName(f"f2_2_bin[{name}]")
+                        if var is not None and var.X > 0.5:
+                            nodes.append(("New Production Facility", lat, lon, city))
+
+                    locations = pd.DataFrame(nodes, columns=["Type", "Lat", "Lon", "City"])
+
+                    # Event overlays
+                    event_nodes = []
+                    if suez_flag:
+                        event_nodes.append(
+                            ("Event: Suez Canal Blockade", 30.59, 32.27, "Suez Canal Crisis")
+                        )
+                    if volcano_flag:
+                        event_nodes.append(
+                            ("Event: Volcano Eruption", 63.63, -19.62, "Volcanic Ash Zone")
+                        )
+                    if oil_flag:
+                        event_nodes.append(
+                            ("Event: Oil Crisis", 28.60, 47.80, "Oil Supply Shock")
+                        )
+                    if trade_flag:
+                        event_nodes.append(
+                            ("Event: Trade War", 55.00, 60.00, "Trade War Impact Zone")
+                        )
+
+                    if event_nodes:
+                        df_events = pd.DataFrame(event_nodes, columns=["Type", "Lat", "Lon", "City"])
+                        locations = pd.concat([locations, df_events], ignore_index=True)
+
+                    color_map = {
+                        "Plant": "purple",
+                        "Cross-dock": "dodgerblue",
+                        "DC": "black",
+                        "Retail": "red",
+                        "New Production Facility": "deepskyblue",
+                        "Event: Suez Canal Blockade": "gold",
+                        "Event: Volcano Eruption": "orange",
+                        "Event: Oil Crisis": "brown",
+                        "Event: Trade War": "green",
+                    }
+
+                    size_map = {
+                        "Plant": 15,
+                        "Cross-dock": 14,
+                        "DC": 16,
+                        "Retail": 20,
+                        "New Production Facility": 14,
+                        "Event: Suez Canal Blockade": 18,
+                        "Event: Volcano Eruption": 18,
+                        "Event: Oil Crisis": 18,
+                        "Event: Trade War": 18,
+                    }
+
+                    fig_map = px.scatter_geo(
+                        locations,
+                        lat="Lat",
+                        lon="Lon",
+                        color="Type",
+                        text="City",
+                        hover_name="City",
+                        color_discrete_map=color_map,
+                        projection="natural earth",
+                        scope="world",
+                        title="Global Supply Chain Structure (Fallback Model)",
+                    )
+
+                    for trace in fig_map.data:
+                        trace.marker.update(
+                            size=size_map.get(trace.name, 12),
+                            opacity=0.9,
+                            line=dict(width=0.5, color="white"),
+                        )
+
+                    fig_map.update_geos(
+                        showcountries=True,
+                        countrycolor="lightgray",
+                        showland=True,
+                        landcolor="rgb(245,245,245)",
+                        fitbounds="locations",
+                    )
+
+                    fig_map.update_layout(
+                        height=600,
+                        margin=dict(l=0, r=0, t=40, b=0),
+                    )
+
+                    st.plotly_chart(fig_map, use_container_width=True)
+
+                    # ===================================================
+                    # 🏭 PRODUCTION OUTBOUND PIE CHART
+                    # ===================================================
+                    st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
+
+                    f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
+                    f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
+
+                    prod_sources = {}
+
+                    # Existing plants
+                    for plant in ["Taiwan", "Shanghai"]:
+                        total = sum(v.X for v in f1_vars if v.VarName.startswith(f"f1[{plant},"))
+                        prod_sources[plant] = total
+
+                    # New EU facilities
+                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                        total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
+                        prod_sources[fac] = total
+
+                    TOTAL_MARKET_DEMAND = 111000
+                    total_produced = sum(prod_sources.values())
+                    unmet = max(TOTAL_MARKET_DEMAND - total_produced, 0)
+
+                    labels = list(prod_sources.keys()) + ["Unmet Demand"]
+                    values = list(prod_sources.values()) + [unmet]
+
+                    df_prod = pd.DataFrame({"Source": labels, "Units Produced": values})
+
+                    fig_prod = px.pie(
+                        df_prod,
+                        names="Source",
+                        values="Units Produced",
+                        hole=0.3,
+                        title="Production Share by Source (Fallback Model)",
+                    )
+
+                    fig_prod.update_traces(
+                        textinfo="label+percent",
+                        textfont_size=13,
+                    )
+
+                    st.plotly_chart(fig_prod, use_container_width=True)
+                    st.dataframe(df_prod.round(2), use_container_width=True)
+
+                    # ===================================================
+                    # 🚚 CROSS-DOCK OUTBOUND PIE CHART
+                    # ===================================================
+                    st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
+
+                    f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
+
+                    crossdocks = ["Vienna", "Gdansk", "Paris"]
+                    crossdock_flows = {}
+
+                    for cd in crossdocks:
+                        total = sum(v.X for v in f2_vars if v.VarName.startswith(f"f2[{cd},"))
+                        crossdock_flows[cd] = total
+
+                    if sum(crossdock_flows.values()) == 0:
+                        st.info("No cross-dock activity.")
+                    else:
+                        df_crossdock = pd.DataFrame({
+                            "Crossdock": list(crossdock_flows.keys()),
+                            "Shipped (units)": list(crossdock_flows.values()),
+                        })
+                        df_crossdock["Share (%)"] = (
+                            df_crossdock["Shipped (units)"] /
+                            df_crossdock["Shipped (units)"].sum()
+                        ) * 100
+
+                        fig_crossdock = px.pie(
+                            df_crossdock,
+                            names="Crossdock",
+                            values="Shipped (units)",
+                            hole=0.3,
+                            title="Cross-dock Outbound Share (Fallback Model)",
+                        )
+
+                        st.plotly_chart(fig_crossdock, use_container_width=True)
+                        st.dataframe(df_crossdock.round(2), use_container_width=True)
+
+                    # ================================================================
+                    # 🚚 Transport Flows by Mode (match SC1/SC2 apps)
+                    # ================================================================
+                    render_transport_flows_by_mode(model_uns)
+
+                    # ================================================================
+                    # 💰🌿 Cost & Emission Distribution (match SC1/SC2 apps)
+                    # ================================================================
+                    render_cost_emission_distribution(results_uns)
+
+                except Exception as e2:
+                    st.error(f"❌ Fallback model also failed: {e2}")
+
+
+
