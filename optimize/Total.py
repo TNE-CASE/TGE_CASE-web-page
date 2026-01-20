@@ -979,12 +979,12 @@ def _render_puzzle_mode():
             air = float(air_pct) / 100.0
             l3_mode_share_by_dc[d] = {"sea": float(sea), "air": float(air)}
     # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
+    # Demand fulfillment slider was removed; we assume 100% fulfillment in computations.
     sel = {
         "plants": plants,
         "crossdocks": crossdocks,
         "dcs": dcs,
         "new_locs": new_locs,
-        "fulfill_pct": fulfill_pct,
         "share_L1_total": share_L1,
         "plant_shares": plant_shares_raw,
         "new_shares": new_shares_raw,
