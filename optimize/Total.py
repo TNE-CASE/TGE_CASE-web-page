@@ -1252,7 +1252,7 @@ def _render_puzzle_mode():
 # Toggle Gamification Mode on/off via env var:
 #   ENABLE_GAMIFICATION=1 (default) -> shows Gamification Mode
 #   ENABLE_GAMIFICATION=0          -> hides Gamification Mode
-ENABLE_GAMIFICATION = os.getenv("ENABLE_GAMIFICATION", "1") == "1"
+ENABLE_GAMIFICATION = False
 
 mode_options = ["Normal Mode"]
 if ENABLE_GAMIFICATION:
