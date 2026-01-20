@@ -20,6 +20,14 @@ import gurobipy as gp
 import inspect
 import numpy as np
 from scipy.stats import norm
+from datetime import datetime, timezone
+
+# Puzzle submissions -> SharePoint Excel (implemented in post_data.py)
+# If post_data.py is missing or not configured, Puzzle Mode still works; only "Submit" will be disabled.
+try:
+    from post_data import push_puzzle_submission
+except Exception:
+    push_puzzle_submission = None
 
 # Gamification mode extracted into a separate module (toggleable)
 from gamification import render_gamification_mode
@@ -1000,6 +1008,12 @@ def _render_puzzle_mode():
     if st.button("Compute Implications", key="pz_run"):
         results, flows = _compute_puzzle_results(cfg, sel, scen)
 
+        # Persist the last run so users can submit after exploring the outputs.
+        st.session_state["pz_last_results"] = results
+        st.session_state["pz_last_flows"] = flows
+        st.session_state["pz_last_sel"] = sel
+        st.session_state["pz_last_scen"] = scen
+
         st.success("Computed! ✅")
 
         c_cost, c_em = st.columns(2)
@@ -1244,6 +1258,81 @@ def _render_puzzle_mode():
 
         # Cost + emission distributions (reuse existing renderer)
         render_cost_emission_distribution(results)
+
+    # ------------------------------------------------------------
+    # 📤 Puzzle submission (email + solution details -> SharePoint Excel)
+    # ------------------------------------------------------------
+    if "pz_last_results" in st.session_state:
+        st.markdown("---")
+        st.subheader("📤 Submit your solution")
+        st.caption(
+            "Only **@uzh.ch** email addresses are accepted. If the same email submits multiple times, "
+            "we keep only the **lowest-cost** submission in the Excel table (others are removed)."
+        )
+
+        if push_puzzle_submission is None:
+            st.warning(
+                "Submission is currently disabled because **post_data.py** is missing or misconfigured. "
+                "Puzzle Mode computations are unaffected."
+            )
+            return
+
+        with st.form("puzzle_submit_form", clear_on_submit=False):
+            email = st.text_input("UZH email (@uzh.ch)", value="", placeholder="name.surname@uzh.ch")
+            details = st.text_area(
+                "Solution details (how you built the network / your reasoning)",
+                value="",
+                height=160,
+                placeholder="Explain your decisions, constraints you targeted, trade-offs, etc.",
+            )
+            submitted = st.form_submit_button("Send to Excel")
+
+        if submitted:
+            email_clean = (email or "").strip().lower()
+            if not re.match(r"^[a-z0-9._%+\-]+@uzh\.ch$", email_clean):
+                st.error("Please enter a valid **@uzh.ch** email address.")
+                return
+
+            results = st.session_state["pz_last_results"]
+            flows = st.session_state.get("pz_last_flows", {})
+            sel_last = st.session_state.get("pz_last_sel", {})
+            scen_last = st.session_state.get("pz_last_scen", {})
+
+            payload = {
+                "email": email_clean,
+                "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
+                "cost_eur": float(results.get("Objective_value", 0.0)),
+                "co2_total_ton": float(results.get("CO2_Total", 0.0)),
+                "details": details,
+                "selection": sel_last,
+                "scenario": scen_last,
+                "flows": flows,
+                "results": {
+                    # keep the payload small-ish; the server can store JSON in a single cell
+                    "Objective_value": float(results.get("Objective_value", 0.0)),
+                    "CO2_Total": float(results.get("CO2_Total", 0.0)),
+                    "E_air": float(results.get("E_air", 0.0)),
+                    "E_sea": float(results.get("E_sea", 0.0)),
+                    "E_road": float(results.get("E_road", 0.0)),
+                    "E_lastmile": float(results.get("E_lastmile", 0.0)),
+                    "E_production": float(results.get("E_production", 0.0)),
+                },
+            }
+
+            try:
+                resp = push_puzzle_submission(
+                    email=email_clean,
+                    cost_eur=float(results.get("Objective_value", 0.0)),
+                    co2_total_ton=float(results.get("CO2_Total", 0.0)),
+                    details=details,
+                    payload=payload,
+                )
+                kept = None
+                if isinstance(resp, dict):
+                    kept = resp.get("kept") or resp.get("status")
+                st.success("Submitted ✅" + (f" (server: {kept})" if kept else ""))
+            except Exception as e:
+                st.error(f"Submission failed: {e}")
 
 
 # ------------------------------------------------------------
