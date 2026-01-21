@@ -152,6 +152,34 @@ def run_sc2():
         help="Select the EU carbon price column value."
     )
     
+
+# 🎛️ Sourcing cost multiplier selector (Asia only)
+scm_col = None
+for c in df.columns:
+    cl = c.lower()
+    if "sourcing" in cl and "multiplier" in cl:
+        scm_col = c
+        break
+
+if scm_col is not None:
+    try:
+        scm_options = sorted(pd.to_numeric(df[scm_col], errors="coerce").dropna().unique().tolist())
+    except Exception:
+        scm_options = sorted(df[scm_col].dropna().unique().tolist())
+
+    if not scm_options:
+        selected_scm = None
+    else:
+        default_scm = 1.0 if 1.0 in scm_options else scm_options[0]
+        selected_scm = st.sidebar.selectbox(
+            "Sourcing Cost Multiplier (Asia)",
+            scm_options,
+            index=scm_options.index(default_scm),
+            help="Filter scenarios by the Asia sourcing cost multiplier used in the simulation grid."
+        )
+else:
+    selected_scm = None
+
     # Decide which column the dataset uses for EU carbon price
     price_col = None
     if "CO2_CostAtMfg" in df.columns:
@@ -160,7 +188,11 @@ def run_sc2():
         price_col = "CO2_CostAtEU"
     
     # Apply price filter if we found a price column, otherwise keep all rows
-    pool = df.copy() if price_col is None else df[df[price_col] == co2_cost]
+    pool = df.copy()
+    if price_col is not None:
+        pool = pool[pool[price_col] == co2_cost]
+    if scm_col is not None and selected_scm is not None:
+        pool = pool[pool[scm_col] == selected_scm]
     
     if pool.empty:
         st.error("This solution is not feasible — even Swiss precision couldn’t optimize it! 🇨🇭")
@@ -183,7 +215,14 @@ def run_sc2():
     # ----------------------------------------------------
     # FILTER SUBSET AND FIND CLOSEST SCENARIO
     # ----------------------------------------------------
-    pool = df[df["CO2_CostAtMfg"] == co2_cost] if "CO2_CostAtMfg" in df.columns else df.copy()
+    pool = df.copy()
+    if "CO2_CostAtMfg" in df.columns:
+        pool = pool[pool["CO2_CostAtMfg"] == co2_cost]
+    elif "CO2_CostAtEU" in df.columns:
+        pool = pool[pool["CO2_CostAtEU"] == co2_cost]
+
+    if scm_col is not None and selected_scm is not None:
+        pool = pool[pool[scm_col] == selected_scm]
     
     if pool.empty:
         st.warning("⚠️ No scenarios match this CO₂ price — showing all instead.")
