@@ -1016,13 +1016,66 @@ def _render_puzzle_mode():
 
         st.success("Computed! ✅")
 
+        # ------------------------------------------------------------
+        # Puzzle Mode Base Cases (for trade-off comparison)
+        # ------------------------------------------------------------
+        # Fixed reference solutions (from the provided screenshots):
+        #   - Min Cost base case: (Cost, CO2)
+        #   - Min CO2 base case: (Cost, CO2)
+        MIN_COST_BASE_CASE_EUR = 12_770_125.95
+        MIN_COST_BASE_CASE_CO2_TON = 1_582.42
+
+        MIN_CO2_BASE_CASE_EUR = 15_584_560.46
+        MIN_CO2_BASE_CASE_CO2_TON = 727.91
+
+        def _pct_change(curr: float, base: float) -> float:
+            base = float(base)
+            if abs(base) < 1e-12:
+                return float("nan")
+            return (float(curr) - base) / base * 100.0
+
+        total_cost_val = float(results.get("Objective_value", 0.0))
+        total_co2_val = float(results.get("CO2_Total", 0.0))
+
+        # Current selection metrics
         c_cost, c_em = st.columns(2)
         with c_cost:
-            st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
+            st.metric("💰 Total Cost (€)", f"{total_cost_val:,.2f}")
         with c_em:
-            st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+            st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
 
-        st.subheader("🌿 CO₂ Emissions")
+        # Base-case values + percent-change comparisons (to show the trade-off)
+        st.markdown("#### 🔎 Base case comparison")
+        bc1, bc2 = st.columns(2)
+
+        with bc1:
+            st.markdown("**Min Cost base case**")
+            st.metric(
+                "Cost (€)",
+                f"{MIN_COST_BASE_CASE_EUR:,.2f}",
+                delta=f"Your cost: {_pct_change(total_cost_val, MIN_COST_BASE_CASE_EUR):+,.2f}%"
+            )
+            st.metric(
+                "CO₂ (tons)",
+                f"{MIN_COST_BASE_CASE_CO2_TON:,.2f}",
+                delta=f"Your CO₂: {_pct_change(total_co2_val, MIN_COST_BASE_CASE_CO2_TON):+,.2f}%"
+            )
+
+        with bc2:
+            st.markdown("**Min CO₂ base case**")
+            st.metric(
+                "Cost (€)",
+                f"{MIN_CO2_BASE_CASE_EUR:,.2f}",
+                delta=f"Your cost: {_pct_change(total_cost_val, MIN_CO2_BASE_CASE_EUR):+,.2f}%"
+            )
+            st.metric(
+                "CO₂ (tons)",
+                f"{MIN_CO2_BASE_CASE_CO2_TON:,.2f}",
+                delta=f"Your CO₂: {_pct_change(total_co2_val, MIN_CO2_BASE_CASE_CO2_TON):+,.2f}%"
+            )
+
+
+st.subheader("🌿 CO₂ Emissions")
         st.json({
             "Air": results.get("E_air", 0),
             "Sea": results.get("E_sea", 0),
