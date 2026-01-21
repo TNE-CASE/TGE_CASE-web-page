@@ -935,46 +935,16 @@ def _render_puzzle_mode():
     st.markdown("#### Production split")
     share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
 
-    # --- UI CHANGE ---
-    # 1) Keep all numbers on this page in the 0–100 range.
-    # 2) Show per-plant inputs side-by-side (not stacked).
-    st.caption("Layer 1: split across selected plants (we normalize automatically). Values are in % (0–100).")
+    st.caption("Layer 1: split across selected plants (we normalize automatically)")
     plant_shares_raw = {}
-    _plants_for_weights = (plants or cfg["plants_all"])
-    _n_pl = max(len(_plants_for_weights), 1)
-    _default_pct = int(round(100 / _n_pl))
-    _cols = st.columns(_n_pl)
-    for i, p in enumerate(_plants_for_weights):
-        with _cols[i]:
-            st.markdown(f"**{p} (%)**")
-            plant_shares_raw[p] = st.slider(
-                "",
-                min_value=0,
-                max_value=100,
-                value=_default_pct,
-                step=1,
-                key=f"pz_w_pl_{p}",
-                label_visibility="collapsed",
-            )
+    for p in (plants or cfg["plants_all"]):
+        plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
 
     if new_locs:
-        st.caption("Layer 2: split across selected new facilities (we normalize automatically). Values are in % (0–100).")
+        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
         new_shares_raw = {}
-        _n_new = max(len(new_locs), 1)
-        _default_new_pct = int(round(100 / _n_new))
-        _cols_new = st.columns(_n_new)
-        for i, n in enumerate(new_locs):
-            with _cols_new[i]:
-                st.markdown(f"**{n} (%)**")
-                new_shares_raw[n] = st.slider(
-                    "",
-                    min_value=0,
-                    max_value=100,
-                    value=_default_new_pct,
-                    step=1,
-                    key=f"pz_w_new_{n}",
-                    label_visibility="collapsed",
-                )
+        for n in new_locs:
+            new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
     else:
         new_shares_raw = {}
 
@@ -1443,19 +1413,30 @@ else:
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
 
-# Expose sourcing-cost multiplier only for SC2F (and for Gamification Mode / MASTER).
-# For SC1F in Normal Mode, keep the old behavior (no multiplier UI).
-if (mode == "Gamification Mode") or ("SC2F" in model_choice):
-    sourcing_cost_multiplier = st.slider(
-        "Sourcing Cost Multiplier (Layer 1)",
-        min_value=0.5,
-        max_value=4.0,
-        value=1.0,
-        step=0.01,
-        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
+# Expose sourcing-cost multiplier and EU carbon price only for SC2F in Normal Mode.
+# (Gamification Mode keeps MASTER defaults and does not expose these controls.)
+if (mode == "Normal Mode") and ("SC2F" in model_choice):
+    sourcing_cost_multiplier_pct = st.slider(
+        "Sourcing Cost Multiplier (Layer 1) (%)",
+        min_value=50,
+        max_value=400,
+        value=100,
+        step=1,
+        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × (multiplier% / 100).",
+    )
+    sourcing_cost_multiplier = float(sourcing_cost_multiplier_pct) / 100.0
+
+    # European carbon price parameter for SC2F (new facilities)
+    co2_cost_per_ton_New = st.number_input(
+        "European Carbon Price (€/ton CO₂)",
+        min_value=0.0,
+        value=60.0,
+        step=1.0,
+        help="Applies to manufacturing CO₂ cost for NEW (EU) facilities in SC2F.",
     )
 else:
     sourcing_cost_multiplier = 1.0
+    co2_cost_per_ton_New = 60.0
 
 scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
@@ -1478,9 +1459,9 @@ if (mode == "Normal Mode") and ("SC1F" in model_choice):
 service_level = float(st.session_state["service_level"])
 
 
-# CO₂ prices are fixed to default values (not user-editable)
+# CO₂ price for existing plants is fixed to default value (not user-editable here)
 co2_cost_per_ton = 37.5
-co2_cost_per_ton_New = 60.0
+
 # ------------------------------------------------------------
 # RUN OPTIMIZATION
 # ------------------------------------------------------------
