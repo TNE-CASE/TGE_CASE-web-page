@@ -151,35 +151,31 @@ def run_sc2():
         value=60,
         help="Select the EU carbon price column value."
     )
-    
 
-# 🎛️ Sourcing cost multiplier selector (Asia only)
-scm_col = None
-for c in df.columns:
-    cl = c.lower()
-    if "sourcing" in cl and "multiplier" in cl:
-        scm_col = c
-        break
-
-if scm_col is not None:
-    try:
+    # 🎛️ Sourcing cost multiplier selector (Asia only) — optional if present in dataset
+    scm_col = next((c for c in df.columns if "sourcing" in c.lower() and "multiplier" in c.lower()), None)
+    if scm_col is not None:
         scm_options = sorted(pd.to_numeric(df[scm_col], errors="coerce").dropna().unique().tolist())
-    except Exception:
-        scm_options = sorted(df[scm_col].dropna().unique().tolist())
+        if scm_options:
+            default_scm = 1.0 if 1.0 in scm_options else scm_options[0]
+            selected_scm = st.sidebar.selectbox(
+                "Sourcing Cost Multiplier (Asia)",
+                scm_options,
+                index=scm_options.index(default_scm),
+                help="Filter scenarios by the multiplier applied to Asia (Taiwan/Shanghai) sourcing costs."
+            )
+            df_scm = df[df[scm_col] == selected_scm].copy()
+            if not df_scm.empty:
+                df = df_scm
+                # If any derived views were computed earlier, re-derive them on the filtered dataset
+                try:
+                    data_by_weight = preprocess(df)  # noqa: F841
+                except Exception:
+                    pass
+            else:
+                st.warning("⚠️ No scenarios match this sourcing multiplier — showing all instead.")
 
-    if not scm_options:
-        selected_scm = None
-    else:
-        default_scm = 1.0 if 1.0 in scm_options else scm_options[0]
-        selected_scm = st.sidebar.selectbox(
-            "Sourcing Cost Multiplier (Asia)",
-            scm_options,
-            index=scm_options.index(default_scm),
-            help="Filter scenarios by the Asia sourcing cost multiplier used in the simulation grid."
-        )
-else:
-    selected_scm = None
-
+    
     # Decide which column the dataset uses for EU carbon price
     price_col = None
     if "CO2_CostAtMfg" in df.columns:
@@ -188,11 +184,7 @@ else:
         price_col = "CO2_CostAtEU"
     
     # Apply price filter if we found a price column, otherwise keep all rows
-    pool = df.copy()
-    if price_col is not None:
-        pool = pool[pool[price_col] == co2_cost]
-    if scm_col is not None and selected_scm is not None:
-        pool = pool[pool[scm_col] == selected_scm]
+    pool = df.copy() if price_col is None else df[df[price_col] == co2_cost]
     
     if pool.empty:
         st.error("This solution is not feasible — even Swiss precision couldn’t optimize it! 🇨🇭")
@@ -215,14 +207,7 @@ else:
     # ----------------------------------------------------
     # FILTER SUBSET AND FIND CLOSEST SCENARIO
     # ----------------------------------------------------
-    pool = df.copy()
-    if "CO2_CostAtMfg" in df.columns:
-        pool = pool[pool["CO2_CostAtMfg"] == co2_cost]
-    elif "CO2_CostAtEU" in df.columns:
-        pool = pool[pool["CO2_CostAtEU"] == co2_cost]
-
-    if scm_col is not None and selected_scm is not None:
-        pool = pool[pool[scm_col] == selected_scm]
+    pool = df[df["CO2_CostAtMfg"] == co2_cost] if "CO2_CostAtMfg" in df.columns else df.copy()
     
     if pool.empty:
         st.warning("⚠️ No scenarios match this CO₂ price — showing all instead.")
