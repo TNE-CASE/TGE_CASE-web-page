@@ -79,8 +79,8 @@ def render_gamification_mode() -> Dict[str, Any]:
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
-    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
-    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+    dcs_all = ["Pardubice", "Calais", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
 
     st.info("✅ In Gamification Mode, all Distribution Centers (DCs) are assumed active.")
 

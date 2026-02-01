@@ -358,7 +358,7 @@ def run_sc2():
         )
     
     # New European factories (f2_2)
-    new_facilities = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+    new_facilities = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
     for fac in new_facilities:
         prod_sources[fac] = sum(
             float(closest[c]) for c in f2_2_cols if c.startswith(f"f2_2[{fac},")
@@ -418,7 +418,7 @@ def run_sc2():
     with colC:
         st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
         co2_factors_mfg = pd.DataFrame({
-            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
+            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
             "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2 ],
         })
         co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{v:.1f}")
@@ -526,14 +526,14 @@ def run_sc2():
 
     dcs = pd.DataFrame({
         "Type": ["Distribution Centre"] * 4,
-        "Lat": [50.040750, 50.629250, 56.946285, 28.116667],
-        "Lon": [15.776590, 3.057256, 24.105078, -17.216667]
+        "Lat": [50.040750, 50.954468, 56.946285, 28.116667],
+        "Lon": [15.776590, 1.862801, 24.105078, -17.216667]
     })
 
     retailers = pd.DataFrame({
         "Type": ["Retailer Hub"] * 7,
-        "Lat": [50.935173, 51.219890, 50.061430, 54.902720, 59.911491, 53.350140, 59.329440],
-        "Lon": [6.953101, 4.403460, 19.936580, 23.909610, 10.757933, -6.266155, 18.068610]
+        "Lat": [50.935173, 51.219890, 50.061430, 54.902720, 59.911491, 51.898514, 59.329440],
+        "Lon": [6.953101, 4.403460, 19.936580, 23.909610, 10.757933, -8.475604, 18.068610]
     })
 
     
@@ -544,7 +544,7 @@ def run_sc2():
     facility_coords = {
     "f2_2_bin[Budapest]": (47.497913, 19.040236),   # Budapest
     "f2_2_bin[Prague]": (50.088040, 14.420760),   # Prague
-    "f2_2_bin[Dublin]": (53.350140, -6.266155),   # Dublin
+    "f2_2_bin[Cork]": (51.898514, -8.475604),   # Cork
     "f2_2_bin[Helsinki]": (60.169520, 24.935450),   # Helsinki
     "f2_2_bin[Warsaw]": (52.229770, 21.011780),   # Warsaw
     }

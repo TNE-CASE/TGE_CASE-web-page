@@ -210,7 +210,7 @@ CITY_TO_KEYS = {
 
     # DCs 
     "Pardubice": ["Pardubice"],
-    "Lille": ["Lille"],
+    "Calais": ["Calais"],
     "Riga": ["Riga"],
     "LaGomera": ["LaGomera"],
 
@@ -472,24 +472,24 @@ def _puzzle_defaults():
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
-    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
-    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+    dcs_all = ["Pardubice", "Calais", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
 
-    dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
-    handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077,
+    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
+    handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077,
                    "Riga": 4.426038462, "LaGomera": 7.0865}
     handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
 
     sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
     co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
 
-    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Cork": 46000,
                         "Helsinki": 35000, "Warsaw": 26500}
-    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Cork": 3.45e6,
                            "Helsinki": 2.625e6, "Warsaw": 1.9875e6}
-    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Cork": 450000,
                              "Helsinki": 420000, "Warsaw": 412500}
-    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
+    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Cork": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
 
     # Transport emission factor (ton CO2 per ton-km)
     co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
@@ -511,7 +511,7 @@ def _puzzle_defaults():
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna", "Gdansk", "Paris"],
-        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
     )
     dist2_new = pd.DataFrame(
         [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -519,15 +519,15 @@ def _puzzle_defaults():
          [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
          [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
          [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-        index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+        index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
+        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
     )
     dist3 = pd.DataFrame(
         [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice", "Lille", "Riga", "LaGomera"],
+        index=["Pardubice", "Calais", "Riga", "LaGomera"],
         columns=list(demand.keys()),
     )
 
@@ -1098,7 +1098,7 @@ def _render_puzzle_mode():
             ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
             ("Cross-dock", 48.208500, 16.372100, "Vienna"),
             ("DC", 50.040750, 15.776590, "Pardubice"),
-            ("DC", 50.629250, 3.057256, "Lille"),
+            ("DC", 50.954468, 1.862801, "Calais"),
             ("DC", 56.946285, 24.105078, "Riga"),
             ("DC", 28.116667, -17.216667, "LaGomera"),
             ("Retail", 50.935173, 6.953101, "Cologne"),
@@ -1118,7 +1118,7 @@ def _render_puzzle_mode():
         facility_coords = {
             "Budapest": (47.497913, 19.040236, "Budapest"),
             "Prague": (50.088040, 14.420760, "Prague"),
-            "Dublin": (53.350140, -6.266155, "Dublin"),
+            "Cork": (51.898514, -8.475604, "Cork"),
             "Helsinki": (60.169520, 24.935450, "Helsinki"),
             "Warsaw": (52.229770, 21.011780, "Warsaw"),
         }
@@ -1692,7 +1692,7 @@ if st.button("Run Optimization"):
                 ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
                 ("Cross-dock", 48.208500, 16.372100, "Vienna"),
                 ("DC", 50.040750, 15.776590, "Pardubice"),
-                ("DC", 50.629250, 3.057256, "Lille"),
+                ("DC", 50.629250, 3.057256, "Calais"),
                 ("DC", 56.946285, 24.105078, "Riga"),
                 ("DC", 28.116667, -17.216667, "LaGomera"),
                 ("Retail", 50.935173, 6.953101, "Cologne"),
@@ -1715,7 +1715,7 @@ if st.button("Run Optimization"):
             facility_coords = {
                 "Budapest": (47.497913, 19.040236, "Budapest"),
                 "Prague": (50.088040, 14.420760, "Prague"),
-                "Dublin": (53.350140, -6.266155, "Dublin"),
+                "Cork": (51.898514, -8.475604, "Cork"),
                 "Helsinki": (60.169520, 24.935450, "Helsinki"),
                 "Warsaw": (52.229770, 21.011780, "Warsaw"),
             }
@@ -1869,7 +1869,7 @@ if st.button("Run Optimization"):
                 prod_sources[plant] = total
             
             # New EU facilities
-            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+            for fac in ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]:
                 total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                 prod_sources[fac] = total
             
@@ -2054,7 +2054,7 @@ if st.button("Run Optimization"):
                     ("Cross-dock", 50.11, 8.68, "Gdansk"),
                     ("Cross-dock", 37.98, 23.73, "Vienna"),
                     ("DC", 47.50, 19.04, "Pardubice"),
-                    ("DC", 48.14, 11.58, "Lille"),
+                    ("DC", 48.14, 11.58, "Calais"),
                     ("DC", 46.95, 7.44, "Riga"),
                     ("DC", 45.46, 9.19, "LaGomera"),
                     ("Retail", 55.67, 12.57, "Cologne"),
@@ -2070,7 +2070,7 @@ if st.button("Run Optimization"):
                     facility_coords = {
                         "Budapest": (49.61, 6.13, "Budapest"),
                         "Prague": (44.83, 20.42, "Prague"),
-                        "Dublin": (47.09, 16.37, "Dublin"),
+                        "Cork": (51.90, -8.47, "Cork"),
                         "Helsinki": (50.45, 14.50, "Helsinki"),
                         "Warsaw": (42.70, 12.65, "Warsaw"),
                     }
@@ -2180,7 +2180,7 @@ if st.button("Run Optimization"):
                         prod_sources[plant] = total
 
                     # New EU facilities
-                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                    for fac in ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]:
                         total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                         prod_sources[fac] = total
 

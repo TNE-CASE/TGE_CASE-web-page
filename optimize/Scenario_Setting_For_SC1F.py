@@ -68,10 +68,10 @@ def run_scenario(
         }
     
     if dc_capacity is None:
-        dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
+        dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
     
     if handling_dc is None:
-        handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077, "Riga": 4.426038462, "LaGomera": 7.0865}
+        handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077, "Riga": 4.426038462, "LaGomera": 7.0865}
     
     if handling_crossdock is None:
         handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
@@ -84,25 +84,25 @@ def run_scenario(
     
     if new_loc_capacity is None:
         new_loc_capacity = {
-            "Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+            "Budapest": 37000, "Prague": 35500, "Cork": 46000,
             "Helsinki": 35000, "Warsaw": 26500,
         }
     
     if new_loc_openingCost is None:
         new_loc_openingCost = {
-            "Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+            "Budapest": 2.775e6, "Prague": 2.6625e6, "Cork": 3.45e6,
             "Helsinki": 2.625e6,   "Warsaw": 1.9875e6,
         }
     
     if new_loc_operationCost is None:
         new_loc_operationCost = {
-            "Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+            "Budapest": 250000, "Prague": 305000, "Cork": 450000,
             "Helsinki": 420000, "Warsaw": 412500
         }
     
     if new_loc_CO2 is None:
         new_loc_CO2 = {
-            "Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6,
+            "Budapest": 3.2, "Prague": 2.8, "Cork": 4.6,
             "Helsinki": 5.8, "Warsaw": 6.2
         }
     
@@ -146,8 +146,8 @@ def run_scenario(
     ModesL1 = ["air", "sea"]
     Plants = ["Taiwan", "Shanghai"]
     Crossdocks = ["Vienna", "Gdansk", "Paris"]
-    New_Locs = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
-    Dcs = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    New_Locs = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
+    Dcs = ["Pardubice", "Calais", "Riga", "LaGomera"]
     Retailers = list(demand.keys())
     product_weight_ton = product_weight / 1000.0
     
@@ -158,9 +158,6 @@ def run_scenario(
 
    
     
-    print(df)
-    print(df["LT (days)"])
-    print(df["SS (€/unit)"])
 
     # -----------------------------
     # DISTANCES (in km)
@@ -177,7 +174,7 @@ def run_scenario(
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna","Gdansk","Paris"],
-        columns=["Pardubice","Lille","Riga","LaGomera"]
+        columns=["Pardubice","Calais","Riga","LaGomera"]
     )
     
     
@@ -186,7 +183,7 @@ def run_scenario(
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice","Lille","Riga","LaGomera"],
+        index=["Pardubice","Calais","Riga","LaGomera"],
         columns=["Cologne","Antwerp","Krakow","Kaunas","Oslo","Dublin","Stockholm"]
     )
     

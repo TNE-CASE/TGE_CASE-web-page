@@ -114,7 +114,7 @@ mode_share_tol=1e-6,
     # --- Layer 2 new manufacturing locations (existing) ---
     isBudapest=None,
     isPrague=None,
-    isDublin=None,
+    isCork=None,
     isHelsinki=None,
     isWarsaw=None,
 
@@ -138,6 +138,7 @@ mode_share_tol=1e-6,
 
     # --- Output verbosity ---
     print_results="YES",
+    # road_lead_time=None,
 ):
     # ======================================================
     # 1. MASTER SETS & DEFAULT NETWORK DATA
@@ -148,8 +149,8 @@ mode_share_tol=1e-6,
     # You can override these from outside via plants_all / crossdocks_all / new_locs_all.
     Plants_all_default     = ["Taiwan", "Shanghai"]
     Crossdocks_all_default = ["Vienna", "Gdansk", "Paris"]
-    New_Locs_all_default   = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
-    Dcs_all                = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    New_Locs_all_default   = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
+    Dcs_all                = ["Pardubice", "Calais", "Riga", "LaGomera"]
 
     Plants_all     = Plants_all_default if plants_all is None else list(plants_all)
     Crossdocks_all = Crossdocks_all_default if crossdocks_all is None else list(crossdocks_all)
@@ -180,11 +181,11 @@ mode_share_tol=1e-6,
     
     
     if dc_capacity is None:
-        dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
+        dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
 
     # Handling costs (€/unit)
     if handling_dc is None:
-        handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077,
+        handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077,
                        "Riga": 4.426038462, "LaGomera": 7.0865}
     if handling_crossdock is None:
         handling_crossdock = {"Vienna": 6.533884615,
@@ -199,22 +200,22 @@ mode_share_tol=1e-6,
     # New location parameters
     if new_loc_capacity is None:
         new_loc_capacity = {
-            "Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+            "Budapest": 37000, "Prague": 35500, "Cork": 46000,
             "Helsinki": 35000, "Warsaw": 26500,
         }
     if new_loc_openingCost is None:
         new_loc_openingCost = {
-            "Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+            "Budapest": 2.775e6, "Prague": 2.6625e6, "Cork": 3.45e6,
             "Helsinki": 2.625e6,   "Warsaw": 1.9875e6,
         }
     if new_loc_operationCost is None:
         new_loc_operationCost = {
-            "Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+            "Budapest": 250000, "Prague": 305000, "Cork": 450000,
             "Helsinki": 420000, "Warsaw": 412500,
         }
     if new_loc_CO2 is None:
         new_loc_CO2 = {
-            "Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6,
+            "Budapest": 3.2, "Prague": 2.8, "Cork": 4.6,
             "Helsinki": 5.8, "Warsaw": 6.2,
         }
 
@@ -291,7 +292,7 @@ mode_share_tol=1e-6,
              [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
              [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
             index=["Vienna", "Gdansk", "Paris"],
-            columns=["Pardubice", "Lille", "Riga", "LaGomera"]
+            columns=["Pardubice", "Calais", "Riga", "LaGomera"]
         )
 
     # NewLoc -> DC (5 x 4)
@@ -302,8 +303,8 @@ mode_share_tol=1e-6,
              [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
              [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
              [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-            index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-            columns=["Pardubice", "Lille", "Riga", "LaGomera"]
+            index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
+            columns=["Pardubice", "Calais", "Riga", "LaGomera"]
         )
 
     # DC -> Retailer (4 x 7) — placeholder; feel free to overwrite with true distances
@@ -313,7 +314,7 @@ mode_share_tol=1e-6,
              [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
              [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
              [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-            index=["Pardubice","Lille","Riga","LaGomera"],
+            index=["Pardubice","Calais","Riga","LaGomera"],
             columns=["Cologne","Antwerp","Krakow","Kaunas","Oslo","Dublin","Stockholm"]
         )
     # ======================================================
@@ -357,7 +358,7 @@ mode_share_tol=1e-6,
     newloc_flags_explicit = {
         "Budapest": isBudapest,
         "Prague": isPrague,
-        "Dublin": isDublin,
+        "Cork": isCork,
         "Helsinki": isHelsinki,
         "Warsaw": isWarsaw,
     }

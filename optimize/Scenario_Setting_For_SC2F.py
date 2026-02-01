@@ -26,6 +26,7 @@ def run_scenario(
     handling_dc=None,
     handling_crossdock=None,
     sourcing_cost=None,
+    sourcing_cost_multiplier=1.0,
     co2_prod_kg_per_unit=None,
     product_weight=2.58,
     co2_cost_per_ton=37.50,
@@ -50,6 +51,7 @@ def run_scenario(
     trade_war = False,
     tariff_rate=1,
     service_level = 0.9 
+    #road_lead_time
 ):
     # =====================================================
     # DEFAULT DATA (filled from original SC2)
@@ -61,10 +63,10 @@ def run_scenario(
         }
     
     if dc_capacity is None:
-        dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
+        dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
     
     if handling_dc is None:
-        handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077, "Riga": 4.426038462, "LaGomera": 7.0865}
+        handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077, "Riga": 4.426038462, "LaGomera": 7.0865}
     
     if handling_crossdock is None:
         handling_crossdock = {"Vienna": 6.533884615,
@@ -73,27 +75,34 @@ def run_scenario(
     
     if sourcing_cost is None:
         sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
+    # Apply sourcing cost multiplier ONLY to Asian facilities (Taiwan & Shanghai)
+    # This multiplies the unit sourcing cost used in the objective for these plants.
+    if sourcing_cost_multiplier is None:
+        sourcing_cost_multiplier = 1.0
+    for _k in ("Taiwan", "Shanghai"):
+        if _k in sourcing_cost:
+            sourcing_cost[_k] = sourcing_cost[_k] * sourcing_cost_multiplier
     if co2_prod_kg_per_unit is None:
         co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
     
     if new_loc_capacity is None:
         new_loc_capacity = {
-            "Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+            "Budapest": 37000, "Prague": 35500, "Cork": 46000,
             "Helsinki": 35000, "Warsaw": 26500,
         }
     if new_loc_openingCost is None:
         new_loc_openingCost = {
-            "Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+            "Budapest": 2.775e6, "Prague": 2.6625e6, "Cork": 3.45e6,
             "Helsinki": 2.625e6,   "Warsaw": 1.9875e6,
         }
     if new_loc_operationCost is None:
         new_loc_operationCost = {
-            "Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+            "Budapest": 250000, "Prague": 305000, "Cork": 450000,
             "Helsinki": 420000, "Warsaw": 412500,
         }
     if new_loc_CO2 is None:
         new_loc_CO2 = {
-            "Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6,
+            "Budapest": 3.2, "Prague": 2.8, "Cork": 4.6,
             "Helsinki": 5.8, "Warsaw": 6.2,
         }
     
@@ -137,8 +146,8 @@ def run_scenario(
     ModesL1 = ["air", "sea"]
     Plants = ["Taiwan", "Shanghai"]
     Crossdocks = ["Vienna", "Gdansk", "Paris"]
-    New_Locs = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
-    Dcs = ["Pardubice", "Lille", "Riga", "LaGomera"]
+    New_Locs = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
+    Dcs = ["Pardubice", "Calais", "Riga", "LaGomera"]
     Retailers = list(demand.keys())
     product_weight_ton = product_weight / 1000.0
     
@@ -201,7 +210,7 @@ def run_scenario(
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna","Gdansk","Paris"],
-        columns=["Pardubice","Lille","Riga","LaGomera"]
+        columns=["Pardubice","Calais","Riga","LaGomera"]
     )
     
     dist2_2 = pd.DataFrame([[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -209,8 +218,8 @@ def run_scenario(
                             [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
                             [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
                             [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-                           index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-                           columns = ["Pardubice","Lille","Riga","LaGomera"]
+                           index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
+                           columns = ["Pardubice","Calais","Riga","LaGomera"]
                            )
     
     dist3 = pd.DataFrame(
@@ -218,7 +227,7 @@ def run_scenario(
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice","Lille","Riga","LaGomera"],
+        index=["Pardubice","Calais","Riga","LaGomera"],
         columns=["Cologne","Antwerp","Krakow","Kaunas","Oslo","Dublin","Stockholm"]
     )
     
@@ -754,8 +763,10 @@ def simulate_scenarios_full():
         # --- Parameter grids (same as main SC2F) ---
         co2_values = [i / 100 for i in range(0, 100)]      # 0–99%
         product_weights = [2.58]
-        CO_2_CostsAtEU = [20 * i for i in range(0, 6)]     # 0–100 €/ton
+        CO_2_CostsAtEU = [20, 40, 60, 80, 100, 1000, 10000, 100000]     # 0–100 €/ton
         unit_penaltycost = [1.7]
+
+        sourcing_cost_multipliers = [0.5 * i for i in range(1, 7)]  # 0.5 to 3.0
 
         scenario_counter = 0
 
@@ -763,44 +774,47 @@ def simulate_scenarios_full():
             for w in product_weights:
                 for co2_cost in CO_2_CostsAtEU:
                     for penaltycost in unit_penaltycost:
-                        start = time.time()
-                        scenario_counter += 1
+                        for scm in sourcing_cost_multipliers:
+                            start = time.time()
+                            scenario_counter += 1
 
-                        try:
-                            results, model = run_scenario(
-                                demand=scaled_demand,                # 🔹 scaled demand
-                                CO_2_percentage=co2_pct,
-                                product_weight=w,
-                                co2_cost_per_ton_New=co2_cost,
-                                unit_penaltycost=penaltycost,
-                                print_results="NO"
-                            )
+                            try:
+                                results, model = run_scenario(
+                                    demand=scaled_demand,                # 🔹 scaled demand
+                                    CO_2_percentage=co2_pct,
+                                    product_weight=w,
+                                    co2_cost_per_ton_New=co2_cost,
+                                    unit_penaltycost=penaltycost,
+                                    sourcing_cost_multiplier=scm,
+                                    print_results="NO"
+                                )
 
-                            runtime = round(time.time() - start, 2)
-                            flat_vars = {v.VarName: v.X for v in model.getVars()}
+                                runtime = round(time.time() - start, 2)
+                                flat_vars = {v.VarName: v.X for v in model.getVars()}
 
-                            run_record = {
-                                "Scenario_ID": scenario_counter,
-                                "Demand_Level": level,
-                                "CO2_percentage": co2_pct,
-                                "Product_weight": w,
-                                "CO2_CostAtMfg": co2_cost,
-                                "Unit_penaltycost": penaltycost,
-                                "Runtime_sec": runtime,
-                                "Status": model.Status,
-                                **results,
-                                **flat_vars
-                            }
+                                run_record = {
+                                    "Scenario_ID": scenario_counter,
+                                    "Demand_Level": level,
+                                    "CO2_percentage": co2_pct,
+                                    "Product_weight": w,
+                                    "CO2_CostAtMfg": co2_cost,
+                                    "Unit_penaltycost": penaltycost,
+                                    "SourcingCostMultiplier": scm,
+                                    "Runtime_sec": runtime,
+                                    "Status": model.Status,
+                                    **results,
+                                    **flat_vars
+                                }
 
-                            results_summary.append(run_record)
-                            key = (round(level, 3), round(co2_pct, 3), round(w, 3), round(co2_cost, 3))
-                            json_dict[str(key)] = run_record
+                                results_summary.append(run_record)
+                                key = (round(level, 3), round(co2_pct, 3), round(w, 3), round(co2_cost, 3), round(scm, 3))
+                                json_dict[str(key)] = run_record
 
-                            print(f"✅ Done: Demand={int(level*100)}%, CO2={co2_pct:.2f}, Obj={results.get('Objective_value', 0):.2f}")
+                                print(f"✅ Done: Demand={int(level*100)}%, CO2={co2_pct:.2f}, SCM={scm:.1f}x, Obj={results.get('Objective_value', 0):.2f}")
 
-                        except Exception as e:
-                            print(f"❌ Infeasible at {int(level*100)}% demand, CO2={co2_pct:.2f}: {e}")
-                            continue
+                            except Exception as e:
+                                print(f"❌ Infeasible at {int(level*100)}% demand, CO2={co2_pct:.2f}, SCM={scm:.1f}x: {e}")
+                                continue
 
         if not results_summary:
             print(f"⚠️ No feasible scenarios found for {int(level*100)}% demand. Skipping this sheet.")
@@ -810,7 +824,7 @@ def simulate_scenarios_full():
         df_summary = pd.DataFrame(results_summary)
 
         # --- Write to Excel (one sheet per demand level) ---
-        df_summary.to_excel(writer, sheet_name="deneme", index=False)
+        df_summary.to_excel(writer, sheet_name=f"{int(round(level*100))}%", index=False)
 
         print(f"✅ Results saved for {int(level*100)}% demand.")
 
@@ -819,4 +833,3 @@ def simulate_scenarios_full():
 
 if __name__ == "__main__":
     simulate_scenarios_full()
-
