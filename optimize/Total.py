@@ -897,7 +897,7 @@ def _render_puzzle_mode():
     # Scenario events (optional)
     # Scenario events have been removed for simplicity
     
-    """st.markdown("#### Scenario events")
+    st.markdown("#### Scenario events")
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
         suez = st.checkbox("Suez Canal Blockade (forces L1 sea=0)", value=False, key="pz_suez")
@@ -915,7 +915,7 @@ def _render_puzzle_mode():
         "volcano": volcano,
         "trade_war": trade,
         "tariff_rate": tariff,
-    }"""
+    }
 
     # Node selections
     st.markdown("#### Facility selection")
