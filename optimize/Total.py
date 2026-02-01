@@ -884,6 +884,8 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
 
 
 def _render_puzzle_mode():
+   
+   
     st.subheader("🧩 Puzzle Mode: Build a Network (No Optimization)")
     st.markdown(
         "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
@@ -893,7 +895,9 @@ def _render_puzzle_mode():
     cfg = _puzzle_defaults()
 
     # Scenario events (optional)
-    st.markdown("#### Scenario events")
+    # Scenario events have been removed for simplicity
+    
+    """st.markdown("#### Scenario events")
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
         suez = st.checkbox("Suez Canal Blockade (forces L1 sea=0)", value=False, key="pz_suez")
@@ -911,7 +915,7 @@ def _render_puzzle_mode():
         "volcano": volcano,
         "trade_war": trade,
         "tariff_rate": tariff,
-    }
+    }"""
 
     # Node selections
     st.markdown("#### Facility selection")
