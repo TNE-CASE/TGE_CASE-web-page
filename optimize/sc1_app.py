@@ -61,7 +61,7 @@ components.html(f"""
 # ----------------------------------------------------
 # 🌐 CACHED DATA LOADERS 
 # ----------------------------------------------------
-@st.cache_data(show_spinner="📡 Fetching data ...")
+@st.cache_data(show_spinner="📡 Fetching data from GitHub...")
 def load_excel_from_github(url: str):
     """Load all Excel sheets into a dict of DataFrames (pickle-safe)."""
     response = requests.get(url)
@@ -294,7 +294,7 @@ def run_sc1():
     # ----------------------------------------------------
     # COST vs EMISSION PLOT
     # ----------------------------------------------------
-    st.markdown(" 📈 Cost vs CO₂ Emission Sensitivity")
+    st.markdown("## 📈 Cost vs CO₂ Emission Sensitivity")
     
     cost_metric_map = {
         "Total Cost (€)": "Objective_value" if "Objective_value" in df.columns else "Total Cost",
@@ -430,7 +430,7 @@ def run_sc1():
                 tickformat=".0%",
                 showgrid=False
             ),
-            yaxis=dict(title="Emissions ", side="left", showgrid=False),
+            yaxis=dict(title="Emissions (thousand)", side="left", showgrid=False),
             yaxis2=dict(title="Cost (million €)", overlaying="y", side="right", showgrid=False),
             legend=dict(orientation="h", y=-0.25, x=0.3),
             margin=dict(l=40, r=40, t=60, b=60),
@@ -445,7 +445,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)
     # ----------------------------------------------------
-    st.markdown("🏭 Production Outbound Breakdown")
+    st.markdown("## 🏭 Production Outbound Breakdown")
 
     # --- Helper: safe float conversion ---
     def _safe_float(x):
@@ -537,11 +537,11 @@ def run_sc1():
         st.plotly_chart(fig_prod, use_container_width=True)
     
     with colB:
-        st.markdown("📦 Production Outbounds")
+        st.markdown("#### 📦 Production Outbounds")
         st.dataframe(df_prod.round(2), use_container_width=True)
     
     with colC:
-        st.markdown("🌿 CO₂ Factors (kg CO₂/unit)")
+        st.markdown("#### 🌿 CO₂ Factors (kg CO₂/unit)")
         co2_factors_mfg = pd.DataFrame({
             "From mfg": ["Taiwan", "Shanghai"],
             "CO₂ kg/unit": [6.3, 9.8]
@@ -553,7 +553,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 🚚 CROSSDOCK OUTBOUND PIE CHART (f2 only)
     # ----------------------------------------------------
-    st.markdown("🚚 Crossdock Outbound Breakdown")
+    st.markdown("## 🚚 Crossdock Outbound Breakdown")
 
     # --- Crossdocks in SC1F ---
     crossdocks = ["Vienna", "Gdansk", "Paris"]
@@ -617,7 +617,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 🌍 SUPPLY CHAIN MAP
     # ----------------------------------------------------
-    st.markdown("🌍 Global Supply Chain Network")
+    st.markdown("## 🌍 Global Supply Chain Network")
     
     plants = pd.DataFrame({
     "Type": ["Plant", "Plant"],
@@ -680,14 +680,14 @@ def run_sc1():
     # ----------------------------------------------------
     # 🚢✈️🚛 FLOW SUMMARY (using LayerX naming)
     # ----------------------------------------------------
-    st.markdown("🚚 Transport Flows by Mode")
+    st.markdown("## 🚚 Transport Flows by Mode")
     
     # --- Helper to read totals safely ---
     def get_value_safe(col):
         return float(closest[col]) if col in closest.index else 0.0
     
     # --- Layer 1: Plants → Cross-docks ---
-    st.markdown("Layer 1: Plants → Cross-docks")
+    st.markdown("### Layer 1: Plants → Cross-docks")
     col1, col2 = st.columns(2)
     col1.metric("🚢 Sea", f"{get_value_safe('Layer1Sea'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer1Air'):,.0f} units")
@@ -696,7 +696,7 @@ def run_sc1():
     st.markdown("---")
     
     # --- Layer 2: Cross-docks → DCs ---
-    st.markdown("Layer 2: Cross-docks → DCs")
+    st.markdown("### Layer 2: Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
     col1.metric("🚢 Sea", f"{get_value_safe('Layer2Sea'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer2Air'):,.0f} units")
@@ -706,7 +706,7 @@ def run_sc1():
     st.markdown("---")
     
     # --- Layer 3: DCs → Retailers ---
-    st.markdown("Layer 3: DCs → Retailer Hubs")
+    st.markdown("### Layer 3: DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
     col1.metric("🚢 Sea", f"{get_value_safe('Layer3Sea'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer3Air'):,.0f} units")
@@ -718,7 +718,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 💰🌿 COST & EMISSION DISTRIBUTION SECTION
     # ----------------------------------------------------
-    st.markdown("💰 Cost and 🌿 Emission Distribution")
+    st.markdown("## 💰 Cost and 🌿 Emission Distribution")
     
     colB, colC = st.columns(2)
     

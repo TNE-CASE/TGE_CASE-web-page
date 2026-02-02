@@ -38,7 +38,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     )
 
     # --- Scenario events as toggles ---
-    st.markdown(" Scenario events")
+    st.markdown("#### Scenario events")
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
         suez_flag = st.checkbox(
@@ -75,7 +75,7 @@ def render_gamification_mode() -> Dict[str, Any]:
         )
 
     # --- Facility activation ---
-    st.markdown(" Facility activation")
+    st.markdown("#### Facility activation")
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
@@ -112,7 +112,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     gm_newloc_flag_kwargs = {f"is{code}": (code in gm_active_new_locs) for code in new_locs_all}
 
     # --- Mode activation ---
-    st.markdown(" Allowed transport modes per layer")
+    st.markdown("#### Allowed transport modes per layer")
 
     all_modes = ["air", "sea", "road"]
     col_m1, col_m2, col_m3 = st.columns(3)
@@ -141,7 +141,7 @@ def render_gamification_mode() -> Dict[str, Any]:
 
     # --- Mode share enforcement: per-node shares for MASTER ---
     # Always enforced in Gamification Mode (no checkbox).
-    st.markdown(" Transport mode shares ")
+    st.markdown("#### Transport mode shares (enforced on Layer 1 & 2)")
 
     gm_mode_share_L1_by_plant = None
     gm_mode_share_L2_by_origin = None
@@ -208,7 +208,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     # -------------------------
     # L1: per-plant (air/sea)
     # -------------------------
-    st.markdown("Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)")
+    st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
     if len(gm_active_plants) == 0:
         st.info("No active plants selected.")
     else:
@@ -222,7 +222,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     # -----------------------------------------
     # L2: per-origin (crossdock + new facility)
     # -----------------------------------------
-    st.markdown("Layer 2 (Cross-dock / New → DC)")
+    st.markdown("**Layer 2 (Cross-dock / New → DC): per-origin shares**")
     active_origins: List[str] = list(gm_active_crossdocks) + list(gm_active_new_locs)
     if len(active_origins) == 0:
         st.info("No active cross-docks or new facilities selected.")

@@ -26,7 +26,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 🧭 CACHED DATA LOADERS
     # ----------------------------------------------------
-    @st.cache_data(show_spinner="📡 Fetching data ...")
+    @st.cache_data(show_spinner="📡 Reading Excel sheets...")
     def get_sheet_names(path: str):
         """Return all sheet names from a local Excel file."""
         try:
@@ -339,7 +339,7 @@ def run_sc2():
     # ----------------------------------------------------
     # --- Display chart, outbound table, and static CO₂ table side by side ---
     
-    st.markdown(" 🏭 Production Outbound Breakdown")
+    st.markdown("## 🏭 Production Outbound Breakdown")
     
     # --- total market demand (fixed reference) ---
     TOTAL_MARKET_DEMAND = 111000  # units
@@ -412,11 +412,11 @@ def run_sc2():
         st.plotly_chart(fig_prod, use_container_width=True)
     
     with colB:
-        st.markdown("📦 Production Outbounds")
+        st.markdown("#### 📦 Production Outbounds")
         st.dataframe(df_prod.round(2), use_container_width=True)
     
     with colC:
-        st.markdown("🌿 CO₂ Factors (kg/unit)")
+        st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
         co2_factors_mfg = pd.DataFrame({
             "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
             "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2 ],
@@ -428,7 +428,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 🚚 CROSSDOCK OUTBOUND PIE CHART (f2)
     # ----------------------------------------------------
-    st.markdown("🚚 Crossdock Outbound Breakdown")
+    st.markdown("## 🚚 Crossdock Outbound Breakdown")
     
     # --- total market demand reference ---
     TOTAL_MARKET_DEMAND = 111000  # units
@@ -501,7 +501,7 @@ def run_sc2():
             st.plotly_chart(fig_crossdock, use_container_width=True)
     
         with colD:
-            st.markdown("🚚 Crossdock Outbounds")
+            st.markdown("#### 🚚 Crossdock Outbounds")
             st.dataframe(df_crossdock.round(2), use_container_width=True)
     
     
@@ -509,7 +509,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 🌍 GLOBAL SUPPLY CHAIN MAP
     # ----------------------------------------------------
-    st.markdown("🌍 Global Supply Chain Network")
+    st.markdown("## 🌍 Global Supply Chain Network")
     
     # --- Plants (f1, China region) ---
     plants = pd.DataFrame({
@@ -637,7 +637,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 🚢✈️🚛 FLOW SUMMARY BY MODE PER LAYER (f1, f2, f2_2, f3)
     # ----------------------------------------------------
-    st.markdown("🚚 Transport Flows by Mode")
+    st.markdown("## 🚚 Transport Flows by Mode")
     
     import re
     
@@ -682,7 +682,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 💰🌿 COST & EMISSION DISTRIBUTION SECTION (FINAL)
     # ----------------------------------------------------
-    st.markdown("💰 Cost and 🌿 Emission Distribution")
+    st.markdown("## 💰 Cost and 🌿 Emission Distribution")
     
     col1, col2 = st.columns(2)
     
