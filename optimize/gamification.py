@@ -42,7 +42,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
         suez_flag = st.checkbox(
-            "Suez Canal Blockade (no water from plants to Europe)",
+            "Suez Canal Blockade (no Water from plants to Europe)",
             value=False,
             key="gm_suez",
         )
@@ -114,13 +114,13 @@ def render_gamification_mode() -> Dict[str, Any]:
     # --- Mode activation ---
     st.markdown("#### Allowed transport modes per layer")
 
-    all_modes = ["air", "water", "road"]
+    all_modes = ["air", "Water", "road"]
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
         gm_modes_L1 = st.multiselect(
             "Plant → Cross-dock (Road not allowed)",
-            options=["air", "water"],
-            default=["air", "water"],
+            options=["air", "Water"],
+            default=["air", "Water"],
             key="gm_modes_L1",
             help="Layer 1 (Plant → Cross-dock) does not allow road transport.",
         )
@@ -150,55 +150,55 @@ def render_gamification_mode() -> Dict[str, Any]:
         return f"{100.0 * float(x):.1f}%"
 
     def _l1_share_ui_for_plant(plant: str, key_prefix: str) -> Dict[str, Any]:
-        # Only air/water; we ask for water and auto-fill air
-        water_pct = st.slider(
-            f"{plant} – water share (L1) (%)",
+        # Only air/Water; we ask for Water and auto-fill air
+        Water_pct = st.slider(
+            f"{plant} – Water share (L1) (%)",
             min_value=0,
             max_value=100,
             value=50,
             step=1,
-            key=f"{key_prefix}_water",
+            key=f"{key_prefix}_Water",
         )
-        water = float(water_pct) / 100.0
-        air = 1.0 - float(water)
+        Water = float(Water_pct) / 100.0
+        air = 1.0 - float(Water)
         st.write(f"{plant} – Air share (L1, auto): **{_pct(air)}**")
         # Use None remainder semantics for robustness on the MASTER side
-        return {"water": float(water), "air": None}
+        return {"Water": float(Water), "air": None}
 
     def _l2_share_ui_for_origin(origin: str, key_prefix: str) -> Dict[str, Any]:
-        # Ask for water, then air up to remaining; road is remainder
-        water_pct = st.slider(
-            f"{origin} – water share (L2) (%)",
+        # Ask for Water, then air up to remaining; road is remainder
+        Water_pct = st.slider(
+            f"{origin} – Water share (L2) (%)",
             min_value=0,
             max_value=100,
             value=50,
             step=1,
-            key=f"{key_prefix}_water",
+            key=f"{key_prefix}_Water",
         )
-        water = float(water_pct) / 100.0
-        rem_after_water = 1.0 - float(water)
+        Water = float(Water_pct) / 100.0
+        rem_after_Water = 1.0 - float(Water)
 
-        if rem_after_water <= 1e-12:
+        if rem_after_Water <= 1e-12:
             air = 0.0
-            st.write(f"{origin} – Air share (L2): **{_pct(air)}** (fixed because water is 100%)")
+            st.write(f"{origin} – Air share (L2): **{_pct(air)}** (fixed because Water is 100%)")
         else:
-            # Default to 50-50-0 (water-air-road)
-            air_default = min(0.50, float(rem_after_water))
+            # Default to 50-50-0 (Water-air-road)
+            air_default = min(0.50, float(rem_after_Water))
             air_pct = st.slider(
                 f"{origin} – Air share (L2) (%)",
                 min_value=0,
-                max_value=int(round(100.0 * float(rem_after_water))),
+                max_value=int(round(100.0 * float(rem_after_Water))),
                 value=int(round(100.0 * float(air_default))),
                 step=1,
                 key=f"{key_prefix}_air",
             )
             air = float(air_pct) / 100.0
 
-        road = max(0.0, 1.0 - float(water) - float(air))
+        road = max(0.0, 1.0 - float(Water) - float(air))
         st.write(f"{origin} – Road share (L2, auto): **{_pct(road)}**")
 
         # Road is auto remainder
-        return {"water": float(water), "air": float(air), "road": None}
+        return {"Water": float(Water), "air": float(air), "road": None}
 
     st.caption(
         "For each node: you set shares for some modes; the remaining mode is auto-filled to reach 100%. "
@@ -206,7 +206,7 @@ def render_gamification_mode() -> Dict[str, Any]:
     )
 
     # -------------------------
-    # L1: per-plant (air/water)
+    # L1: per-plant (air/Water)
     # -------------------------
     st.markdown("**Layer 1 (Plant → Cross-dock): per-plant shares (Road is forbidden)**")
     if len(gm_active_plants) == 0:
@@ -234,8 +234,8 @@ def render_gamification_mode() -> Dict[str, Any]:
 
     # Ensure required modes are enabled in the mode lists (except road on L1)
     # (Mode-share constraints require these variables to exist.)
-    gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "water"})
-    gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "water", "road"})
+    gm_modes_L1 = sorted(set(gm_modes_L1) | {"air", "Water"})
+    gm_modes_L2 = sorted(set(gm_modes_L2) | {"air", "Water", "road"})
 
     st.session_state["gm_mode_share_L1_by_plant"] = gm_mode_share_L1_by_plant
     st.session_state["gm_mode_share_L2_by_origin"] = gm_mode_share_L2_by_origin

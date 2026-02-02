@@ -276,8 +276,8 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
-    totals = {"air": 0.0, "water": 0.0, "road": 0.0}
+    """Sum air/Water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
+    totals = {"air": 0.0, "Water": 0.0, "road": 0.0}
     if model is None:
         return totals
 
@@ -299,7 +299,7 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
     totals = sum_flows_by_mode_model(model, prefix)
     st.markdown(f"### {title}")
     cols = st.columns(3 if include_road else 2)
-    cols[0].metric("🚢 water", f"{totals['water']:,.0f} units")
+    cols[0].metric("🚢 Water", f"{totals['Water']:,.0f} units")
     cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
     if include_road:
         cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
@@ -401,22 +401,22 @@ def render_cost_emission_distribution(results: dict):
         st.subheader("Emission Distribution")
 
         e_air = _safe_float(results.get("E_air", results.get("E_Air", 0)))
-        e_water = _safe_float(results.get("E_water", results.get("E_water", 0)))
+        e_Water = _safe_float(results.get("E_Water", results.get("E_Water", 0)))
         e_road = _safe_float(results.get("E_road", results.get("E_Road", 0)))
         e_last = _safe_float(results.get("E_lastmile", results.get("E_Last-mile", results.get("E_last_mile", 0))))
         e_total = _safe_float(results.get("CO2_Total", results.get("Total Emissions", 0)))
 
         e_prod = _safe_float(results.get("E_production", results.get("E_Production", 0)))
         if e_prod <= 0 and e_total > 0:
-            e_prod = max(e_total - e_air - e_water - e_road - e_last, 0.0)
+            e_prod = max(e_total - e_air - e_Water - e_road - e_last, 0.0)
 
-        total_transport = e_air + e_water + e_road
+        total_transport = e_air + e_Water + e_road
 
         emission_data = {
             "Production": e_prod,
             "Last-mile": e_last,
             "Air": e_air,
-            "water": e_water,
+            "Water": e_Water,
             "Road": e_road,
             "Total Transport": total_transport,
         }
@@ -492,10 +492,10 @@ def _puzzle_defaults():
     new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Cork": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
 
     # Transport emission factor (ton CO2 per ton-km)
-    co2_emission_factor = {"air": 0.000971, "water": 0.000027, "road": 0.000076}
+    co2_emission_factor = {"air": 0.000971, "Water": 0.000027, "road": 0.000076}
 
     # Per-mode transport cost (€/kg-km)
-    tau = {"air": 0.0105, "water": 0.0013, "road": 0.0054}
+    tau = {"air": 0.0105, "Water": 0.0013, "road": 0.0054}
     unit_inventory_holdingCost = 0.85
     unit_penaltycost = 1.7
 
@@ -570,16 +570,16 @@ def _normalize_shares(raw: dict) -> dict:
 def _lt_ss_table(service_level: float, demand: dict, unit_h: float, unit_penaltycost: float):
     """Build a small table for LT, SS(€/unit) per mode, aligned with MASTER's logic."""
     average_distance = 9600
-    speed = {"air": 800, "water": 10, "road": 40}
+    speed = {"air": 800, "Water": 10, "road": 40}
     std_demand = float(np.std(list(demand.values()))) if demand else 0.0
-    modes = ["air", "water", "road"]
+    modes = ["air", "Water", "road"]
 
     lt = {}
     z = {}
     phi = {}
     ss = {}
     for m in modes:
-        mult = 1.2 if m == "water" else 1.0
+        mult = 1.2 if m == "Water" else 1.0
         lt[m] = float(np.round((average_distance * mult) / (speed[m] * 24), 13))
         z[m] = float(norm.ppf(service_level))
         phi[m] = float(norm.pdf(z[m]))
@@ -655,49 +655,49 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     l3_mode_share_by_dc = sel.get("l3_mode_share_by_dc", {})
 
     def _l1_modes(p):
-        water = float(l1_mode_share_by_plant.get(p, {}).get("water", 0.5))
-        water = max(0.0, min(1.0, water))
-        air = 1.0 - water
+        Water = float(l1_mode_share_by_plant.get(p, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        air = 1.0 - Water
         if scen.get("suez_canal", False):
-            water = 0.0
+            Water = 0.0
             air = 1.0
         if scen.get("volcano", False):
             air = 0.0
-            water = 1.0
-        return {"air": air, "water": water}
+            Water = 1.0
+        return {"air": air, "Water": Water}
 
     def _l2_modes(o):
-        water = float(l2_mode_share_by_origin.get(o, {}).get("water", 0.5))
-        water = max(0.0, min(1.0, water))
-        rem = 1.0 - water
+        Water = float(l2_mode_share_by_origin.get(o, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        rem = 1.0 - Water
         air = float(l2_mode_share_by_origin.get(o, {}).get("air", min(0.5, rem)))
         air = max(0.0, min(rem, air))
-        road = max(0.0, 1.0 - water - air)
+        road = max(0.0, 1.0 - Water - air)
         if scen.get("volcano", False):
-            # remove air; re-normalize water/road
+            # remove air; re-normalize Water/road
             air = 0.0
-            s2 = water + road
+            s2 = Water + road
             if s2 <= 1e-12:
-                water, road = 1.0, 0.0
+                Water, road = 1.0, 0.0
             else:
-                water, road = water / s2, road / s2
-        return {"air": air, "water": water, "road": road}
+                Water, road = Water / s2, road / s2
+        return {"air": air, "Water": Water, "road": road}
 
     def _l3_modes(d):
-        water = float(l3_mode_share_by_dc.get(d, {}).get("water", 0.5))
-        water = max(0.0, min(1.0, water))
-        rem = 1.0 - water
+        Water = float(l3_mode_share_by_dc.get(d, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        rem = 1.0 - Water
         air = float(l3_mode_share_by_dc.get(d, {}).get("air", min(0.25, rem)))
         air = max(0.0, min(rem, air))
-        road = max(0.0, 1.0 - water - air)
+        road = max(0.0, 1.0 - Water - air)
         if scen.get("volcano", False):
             air = 0.0
-            s2 = water + road
+            s2 = Water + road
             if s2 <= 1e-12:
-                water, road = 1.0, 0.0
+                Water, road = 1.0, 0.0
             else:
-                water, road = water / s2, road / s2
-        return {"air": air, "water": water, "road": road}
+                Water, road = Water / s2, road / s2
+        return {"air": air, "Water": Water, "road": road}
 
     # Distances restricted to active nodes
     dist1 = cfg["dist1"].reindex(index=plants, columns=crossdocks)
@@ -714,22 +714,22 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
 
     # Flows (store per-layer per-mode totals)
     flows = {
-        "L1": {"air": 0.0, "water": 0.0},
-        "L2": {"air": 0.0, "water": 0.0, "road": 0.0},
-        "L2_new": {"air": 0.0, "water": 0.0, "road": 0.0},
-        "L3": {"air": 0.0, "water": 0.0, "road": 0.0},
+        "L1": {"air": 0.0, "Water": 0.0},
+        "L2": {"air": 0.0, "Water": 0.0, "road": 0.0},
+        "L2_new": {"air": 0.0, "Water": 0.0, "road": 0.0},
+        "L3": {"air": 0.0, "Water": 0.0, "road": 0.0},
     }
 
     # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
     transport_L1 = 0.0
     inv_L1 = 0.0
     sourcing_L1 = 0.0
-    co2_tr_L1 = {"air": 0.0, "water": 0.0}
+    co2_tr_L1 = {"air": 0.0, "Water": 0.0}
     for p in plants:
         mshare = _l1_modes(p)
         for c in crossdocks:
             base = plant_prod[p] / float(len(crossdocks))
-            for mo in ["air", "water"]:
+            for mo in ["air", "Water"]:
                 q = base * mshare[mo]
                 flows["L1"][mo] += q
                 d_km = float(dist1.loc[p, c])
@@ -742,7 +742,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     transport_L2 = 0.0
     inv_L2 = 0.0
     handling_L2 = 0.0
-    co2_tr_L2 = {"air": 0.0, "water": 0.0, "road": 0.0}
+    co2_tr_L2 = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     # Crossdock inflow from L1 is equal split across crossdocks by construction
     total_L1 = sum(plant_prod.values())
@@ -752,7 +752,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         mshare = _l2_modes(c)
         for d in dcs:
             base = cd_inflow[c] / float(len(dcs))
-            for mo in ["air", "water", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L2"][mo] += q
                 d_km = float(dist2.loc[c, d])
@@ -766,7 +766,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     inv_L2_new = 0.0
     cost_new_var = 0.0
     cost_new_fixed = 0.0
-    co2_tr_L2_new = {"air": 0.0, "water": 0.0, "road": 0.0}
+    co2_tr_L2_new = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     for n in new_locs:
         if new_prod.get(n, 0.0) <= 1e-9:
@@ -775,7 +775,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         cost_new_fixed += cfg["new_loc_openingCost"].get(n, 0.0)  # open if used
         for d in dcs:
             base = new_prod[n] / float(len(dcs))
-            for mo in ["air", "water", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L2_new"][mo] += q
                 d_km = float(dist2_new.loc[n, d])
@@ -789,14 +789,14 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     inv_L3 = 0.0
     handling_L3 = 0.0
     lastmile_cost = 0.0
-    co2_tr_L3 = {"air": 0.0, "water": 0.0, "road": 0.0}
+    co2_tr_L3 = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     for d in dcs:
         mshare = _l3_modes(d)
         for r, dem in demand.items():
             dem_eff = float(dem) * (total_units / total_demand_safe)
             base = dem_eff / float(len(dcs))
-            for mo in ["air", "water", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L3"][mo] += q
                 d_km = float(dist3.loc[d, r])
@@ -816,12 +816,12 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         co2_prod_new_ton += (cfg["new_loc_CO2"].get(n, 0.0) / 1000.0) * new_prod.get(n, 0.0)
 
     co2_tr_air = co2_tr_L1["air"] + co2_tr_L2["air"] + co2_tr_L2_new["air"] + co2_tr_L3["air"]
-    co2_tr_water = co2_tr_L1["water"] + co2_tr_L2["water"] + co2_tr_L2_new["water"] + co2_tr_L3["water"]
+    co2_tr_Water = co2_tr_L1["Water"] + co2_tr_L2["Water"] + co2_tr_L2_new["Water"] + co2_tr_L3["Water"]
     co2_tr_road = co2_tr_L2["road"] + co2_tr_L2_new["road"] + co2_tr_L3["road"]
 
     co2_lastmile_ton = (lastmile_CO2_kg / 1000.0) * total_units
     co2_prod_ton = co2_prod_existing_ton + co2_prod_new_ton
-    co2_total = co2_prod_ton + co2_tr_air + co2_tr_water + co2_tr_road + co2_lastmile_ton
+    co2_total = co2_prod_ton + co2_tr_air + co2_tr_Water + co2_tr_road + co2_lastmile_ton
 
     # CO2 cost (manufacturing only, MASTER-style)
     co2_cost_per_ton = float(sel.get("co2_cost_per_ton", 37.5))
@@ -865,7 +865,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         "CO2_Manufacturing_State1": co2_cost_existing,
         "CO2_Cost_L2_2": co2_cost_new,
         "E_air": co2_tr_air,
-        "E_water": co2_tr_water,
+        "E_Water": co2_tr_Water,
         "E_road": co2_tr_road,
         "E_lastmile": co2_lastmile_ton,
         "E_production": co2_prod_ton,
@@ -900,7 +900,7 @@ def _render_puzzle_mode():
     st.markdown("#### Scenario events")
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
-        suez = st.checkbox("Suez Canal Blockade (forces L1 water=0)", value=False, key="pz_suez")
+        suez = st.checkbox("Suez Canal Blockade (forces L1 Water=0)", value=False, key="pz_suez")
         oil = st.checkbox("Oil Crisis (transport cost ×1.3)", value=False, key="pz_oil")
     with col_ev2:
         volcano = st.checkbox("Volcanic Eruption (no air)", value=False, key="pz_volcano")
@@ -953,46 +953,46 @@ def _render_puzzle_mode():
         new_shares_raw = {}
 
     st.markdown("#### Transport mode shares")
-    st.caption("Defaults: L1 water=50% (air remainder), L2 water=50% & air=50% (road remainder), L3 water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
+    st.caption("Defaults: L1 Water=50% (air remainder), L2 Water=50% & air=50% (road remainder), L3 Water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
     st.markdown("**Layer 1 (Plant → Cross-dock)**")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
-        water_pct = st.slider(f"{p} – water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_water_{p}")
-        water = float(water_pct) / 100.0
-        l1_mode_share_by_plant[p] = {"water": float(water)}
+        Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
+        Water = float(Water_pct) / 100.0
+        l1_mode_share_by_plant[p] = {"Water": float(Water)}
 
     st.markdown("**Layer 2 (Cross-dock / New → DC)**")
     l2_mode_share_by_origin = {}
     for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
         with st.expander(f"{o}", expanded=False):
-            water_pct = st.slider("water share (%)", 0, 100, 50, 1, key=f"pz_l2_water_{o}")
-            rem_pct = 100 - int(water_pct)
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o}")
+            rem_pct = 100 - int(Water_pct)
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because water is 100%)")
+                st.write("Air share (%): **0%** (fixed because Water is 100%)")
             else:
                 air_default_pct = min(50, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
-            water = float(water_pct) / 100.0
+            Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l2_mode_share_by_origin[o] = {"water": float(water), "air": float(air)}
+            l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
     st.markdown("**Layer 3 (DC → Retailer)**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
-            water_pct = st.slider("water share (%)", 0, 100, 50, 1, key=f"pz_l3_water_{d}")
-            rem_pct = 100 - int(water_pct)
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d}")
+            rem_pct = 100 - int(Water_pct)
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because water is 100%)")
+                st.write("Air share (%): **0%** (fixed because Water is 100%)")
             else:
                 air_default_pct = min(25, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
-            water = float(water_pct) / 100.0
+            Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l3_mode_share_by_dc[d] = {"water": float(water), "air": float(air)}
+            l3_mode_share_by_dc[d] = {"Water": float(Water), "air": float(air)}
     # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
     # Demand fulfillment slider was removed; we assume 100% fulfillment in computations.
     sel = {
@@ -1081,7 +1081,7 @@ def _render_puzzle_mode():
         st.subheader("🌿 CO₂ Emissions")
         st.json({
             "Air": results.get("E_air", 0),
-            "water": results.get("E_water", 0),
+            "Water": results.get("E_Water", 0),
             "Road": results.get("E_road", 0),
             "Last-mile": results.get("E_lastmile", 0),
             "Production": results.get("E_production", 0),
@@ -1295,21 +1295,21 @@ def _render_puzzle_mode():
         with cL1:
             st.caption("Layer 1")
             st.metric("✈️ Air", f"{flows['L1']['air']:,.0f}")
-            st.metric("🚢 water", f"{flows['L1']['water']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L1']['Water']:,.0f}")
         with cL2:
             st.caption("Layer 2")
             st.metric("✈️ Air", f"{flows['L2']['air']:,.0f}")
-            st.metric("🚢 water", f"{flows['L2']['water']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L2']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2']['road']:,.0f}")
         with cL2n:
             st.caption("Layer 2 (new)")
             st.metric("✈️ Air", f"{flows['L2_new']['air']:,.0f}")
-            st.metric("🚢 water", f"{flows['L2_new']['water']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L2_new']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2_new']['road']:,.0f}")
         with cL3:
             st.caption("Layer 3")
             st.metric("✈️ Air", f"{flows['L3']['air']:,.0f}")
-            st.metric("🚢 water", f"{flows['L3']['water']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L3']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L3']['road']:,.0f}")
 
         # Cost + emission distributions (reuse existing renderer)
@@ -1368,7 +1368,7 @@ def _render_puzzle_mode():
                     "Objective_value": float(results.get("Objective_value", 0.0)),
                     "CO2_Total": float(results.get("CO2_Total", 0.0)),
                     "E_air": float(results.get("E_air", 0.0)),
-                    "E_water": float(results.get("E_water", 0.0)),
+                    "E_Water": float(results.get("E_Water", 0.0)),
                     "E_road": float(results.get("E_road", 0.0)),
                     "E_lastmile": float(results.get("E_lastmile", 0.0)),
                     "E_production": float(results.get("E_production", 0.0)),
@@ -1676,7 +1676,7 @@ if st.button("Run Optimization"):
             st.subheader("🌿 CO₂ Emissions")
             st.json({
                 "Air": results.get("E_air", 0),
-                "water": results.get("E_water", 0),
+                "Water": results.get("E_Water", 0),
                 "Road": results.get("E_road", 0),
                 "Last-mile": results.get("E_lastmile", 0),
                 "Production": results.get("E_production", 0),
