@@ -124,7 +124,7 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Global Supply Chain Optimization (Gurobi)")
+st.title("🌍 Global Supply Chain Optimization ")
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
@@ -276,7 +276,7 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from a Gurobi model."""
+    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
     totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
     if model is None:
         return totals
@@ -886,7 +886,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
 def _render_puzzle_mode():
    
    
-    st.subheader("🧩 Puzzle Mode: Build a Network (No Optimization)")
+    st.subheader("🧩 Puzzle Mode: Build a Network ")
     st.markdown(
         "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
         "We then **compute cost and CO₂ implications** using the same default data as the MASTER model."
@@ -1522,7 +1522,7 @@ co2_cost_per_ton = 37.5
 # RUN OPTIMIZATION
 # ------------------------------------------------------------
 if st.button("Run Optimization"):
-    with st.spinner("⚙ Optimizing with Gurobi..."):
+    with st.spinner("⚙ Optimizing ..."):
         try:
             # 1) Choose which model to run
             
