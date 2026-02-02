@@ -162,19 +162,25 @@ def run_sc1():
         )
         subset = subset[subset["Unit_penaltycost"] == penalty_selected]
 
-    # Slider to pick service level
+    # ----------------------------------------------------
+    # SERVICE LEVEL FILTER (SC1)
+    # ----------------------------------------------------
+    service_col = None
     if "Service_Level" in subset.columns:
-        subset["Service_Level"] = subset["Service_Level"].astype(float)
+        service_col = "Service_Level"
+    elif "Service Level" in subset.columns:
+        service_col = "Service Level"
 
+    if service_col and not subset.empty:
+        subset[service_col] = subset[service_col].astype(float)
         selected_service_level = st.sidebar.slider(
             "Service Level",
-            min_value=float(subset["Service_Level"].min()),
-            max_value=float(subset["Service_Level"].max()),
+            min_value=float(subset[service_col].min()),
+            max_value=float(subset[service_col].max()),
             step=0.1,
-            value=float(subset["Service_Level"].max())
+            value=float(subset[service_col].max()),
         )
-
-        subset = subset[subset["Service_Level"] == selected_service_level]
+        subset = subset[subset[service_col] == selected_service_level]
 
     
     # ----------------------------------------------------
@@ -440,21 +446,48 @@ def run_sc1():
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)
     # ----------------------------------------------------
     st.markdown("## 🏭 Production Outbound Breakdown")
+
+    # --- Helper: safe float conversion ---
+    def _safe_float(x):
+        try:
+            if pd.isna(x):
+                return 0.0
+            return float(x)
+        except Exception:
+            try:
+                return float(str(x).replace(",", "."))
+            except Exception:
+                return 0.0
+
+    # --- Read the corresponding detailed (Demand_*) sheet row for flow variables ---
+    demand_sheet = f"Demand_{selected_level}%"
+    df_demand = excel_data.get(demand_sheet)
+    closest_idx = int(closest.name) if closest.name is not None else None
+    closest_demand = None
+    if df_demand is not None and closest_idx is not None:
+        if 0 <= closest_idx < len(df_demand):
+            closest_demand = df_demand.iloc[closest_idx]
     
-    # --- Total demand reference ---
-    TOTAL_MARKET_DEMAND = 111000  # units
-    
-    # --- Collect f1 variables (China plants) ---
-    f1_cols = [c for c in df.columns if c.startswith("f1[")]
-    
-    # --- Aggregate production from each plant ---
+    # --- Total demand reference (scale by demand level) ---
+    BASE_MARKET_DEMAND = 111000  # units at 100%
+    demand_factor = (
+        _safe_float(closest_demand.get("Demand_Level"))
+        if closest_demand is not None and "Demand_Level" in closest_demand.index
+        else (selected_level / 100.0)
+    )
+    TOTAL_MARKET_DEMAND = BASE_MARKET_DEMAND * demand_factor
+
+    # --- Aggregate production from each plant (prefer summary columns; fallback to detailed f1[*] flows) ---
     prod_sources = {}
     for plant in ["Taiwan", "Shanghai"]:
-        prod_sources[plant] = sum(
-            float(closest[c])
-            for c in f1_cols
-            if c.startswith(f"f1[{plant},")
-        )
+        summary_col = f"{plant} Outbound"
+        if summary_col in closest.index:
+            prod_sources[plant] = _safe_float(closest.get(summary_col))
+        elif closest_demand is not None:
+            f1_cols = [c for c in df_demand.columns if c.startswith(f"f1[{plant},")]
+            prod_sources[plant] = sum(_safe_float(closest_demand.get(c)) for c in f1_cols)
+        else:
+            prod_sources[plant] = 0.0
     
     # --- Calculate unmet demand ---
     total_produced = sum(prod_sources.values())
@@ -463,7 +496,8 @@ def run_sc1():
     # --- Prepare dataframe ---
     labels = list(prod_sources.keys()) + ["Unmet Demand"]
     values = [prod_sources[k] for k in prod_sources] + [unmet]
-    percentages = [v / TOTAL_MARKET_DEMAND * 100 for v in values]
+    denom = TOTAL_MARKET_DEMAND if TOTAL_MARKET_DEMAND else 1.0
+    percentages = [v / denom * 100 for v in values]
     
     df_prod = pd.DataFrame({
         "Source": labels,
@@ -520,20 +554,19 @@ def run_sc1():
     # 🚚 CROSSDOCK OUTBOUND PIE CHART (f2 only)
     # ----------------------------------------------------
     st.markdown("## 🚚 Crossdock Outbound Breakdown")
-    
-    # --- Collect f2 variables (Crossdock → DC) ---
-    f2_cols = [c for c in df.columns if c.startswith("f2[")]
-    
+
     # --- Crossdocks in SC1F ---
     crossdocks = ["Vienna", "Gdansk", "Paris"]
-    
+
+    # NOTE: Array_* sheets do not contain f2[*] variables. Use the aligned Demand_* sheet for crossdock flows.
     crossdock_flows = {}
-    for cd in crossdocks:
-        crossdock_flows[cd] = sum(
-            float(closest[c])
-            for c in f2_cols
-            if c.startswith(f"f2[{cd},")
-        )
+    if closest_demand is not None:
+        for cd in crossdocks:
+            f2_cols = [c for c in df_demand.columns if c.startswith(f"f2[{cd},")]
+            crossdock_flows[cd] = sum(_safe_float(closest_demand.get(c)) for c in f2_cols)
+    else:
+        for cd in crossdocks:
+            crossdock_flows[cd] = 0.0
     
     # --- Compute total handled shipments (no unmet here) ---
     total_outbound_cd = sum(crossdock_flows.values())
@@ -656,29 +689,29 @@ def run_sc1():
     # --- Layer 1: Plants → Cross-docks ---
     st.markdown("### Layer 1: Plants → Cross-docks")
     col1, col2 = st.columns(2)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer1Sea'):,.0f} units")
+    col1.metric("🚢 Water", f"{get_value_safe('Layer1Water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer1Air'):,.0f} units")
-    if get_value_safe("Layer1Sea") + get_value_safe("Layer1Air") == 0:
+    if get_value_safe("Layer1Water") + get_value_safe("Layer1Air") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
     # --- Layer 2: Cross-docks → DCs ---
     st.markdown("### Layer 2: Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer2Sea'):,.0f} units")
+    col1.metric("🚢 Water", f"{get_value_safe('Layer2Water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer2Air'):,.0f} units")
     col3.metric("🚛 Road", f"{get_value_safe('Layer2Road'):,.0f} units")
-    if get_value_safe("Layer2Sea") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
+    if get_value_safe("Layer2Water") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
     # --- Layer 3: DCs → Retailers ---
     st.markdown("### Layer 3: DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer3Sea'):,.0f} units")
+    col1.metric("🚢 Water", f"{get_value_safe('Layer3Water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer3Air'):,.0f} units")
     col3.metric("🚛 Road", f"{get_value_safe('Layer3Road'):,.0f} units")
-    if get_value_safe("Layer3Sea") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
+    if get_value_safe("Layer3Water") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
@@ -734,79 +767,81 @@ def run_sc1():
     # --- 3️⃣ Emission Distribution ---
     with colC:
         st.subheader("Emission Distribution")
-    
-        emission_cols = ["E_Air", "E_Sea", "E_Road", "E_Last-mile", "E_Production"]
-    
-        # Ensure these columns exist in the current sheet
-        available_cols = [c for c in emission_cols if c in df.columns]
-        if not available_cols:
-            st.warning("No emission columns found in this sheet.")
+
+        # NOTE: Some sheets use names like E(Air), others use E_air.
+        # We read from the currently selected scenario row ("closest") and fall back to Demand_* if needed.
+        emission_aliases = {
+            "Production": ["E_Production", "E(Production)", "E_production"],
+            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile"],
+            "Air": ["E_Air", "E(Air)", "E_air"],
+            "Water": ["E_Water", "E(Water)", "E_Water"],
+            "Road": ["E_Road", "E(Road)", "E_road"],
+        }
+
+        def _pick_emission(row, keys):
+            for k in keys:
+                if row is not None and hasattr(row, 'index') and k in row.index:
+                    v = row.get(k, 0)
+                    try:
+                        return float(v)
+                    except Exception:
+                        try:
+                            return float(str(v).replace(',', '.'))
+                        except Exception:
+                            return 0.0
+            return 0.0
+
+        # Prefer the Array_* row (closest). If it does not contain emission columns, fall back to Demand_* aligned row.
+        row_for_emissions = closest
+        has_any = any(any(k in row_for_emissions.index for k in ks) for ks in emission_aliases.values())
+        if (not has_any) and (closest_demand is not None):
+            row_for_emissions = closest_demand
+
+        emission_data = {
+            name: _pick_emission(row_for_emissions, keys)
+            for name, keys in emission_aliases.items()
+        }
+
+        # ✅ Add Total Transport (sum of Air + Water + Road)
+        emission_data["Total Transport"] = (
+            emission_data.get("Air", 0) + emission_data.get("Water", 0) + emission_data.get("Road", 0)
+        )
+
+        if sum(emission_data.values()) == 0:
+            st.info("No emission data recorded for this scenario.")
         else:
-            # Clean numeric formats (convert comma decimals, strip non-numeric chars)
-            for c in available_cols:
-                df[c] = (
-                    df[c]
-                    .astype(str)
-                    .str.replace(",", ".", regex=False)
-                    .str.replace(r"[^0-9.\-]", "", regex=True)
-                )
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-    
-            # Find nearest row by CO₂ reduction %
-            co2_col = next((c for c in df.columns if "reduction" in c.lower()), None)
-            if co2_col is None:
-                st.error("No CO₂ reduction column found.")
-            else:
-                target_row = df.iloc[(df[co2_col] - co2_pct).abs().argmin()]
-    
-                # Collect emission values
-                emission_data = {
-                    "Production": target_row.get("E_Production", 0),
-                    "Last-mile": target_row.get("E_Last-mile", 0),
-                    "Air": target_row.get("E_Air", 0),
-                    "Sea": target_row.get("E_Sea", 0),
-                    "Road": target_row.get("E_Road", 0),
-                }
-    
-                # ✅ Add Total Transport (sum of Air + Sea + Road)
-                emission_data["Total Transport"] = (
-                    emission_data["Air"] + emission_data["Sea"] + emission_data["Road"]
-                )
-    
-                # Build dataframe for chart
-                df_emission_dist = pd.DataFrame({
-                    "Source": list(emission_data.keys()),
-                    "Emissions": list(emission_data.values())
-                })
-    
-                fig_emission_dist = px.bar(
-                    df_emission_dist,
-                    x="Source",
-                    y="Emissions",
-                    text="Emissions",
-                    color="Source",
-                    color_discrete_sequence=[
-                        "#1C7C54", "#17A2B8", "#808080", "#FFD700", "#4682B4", "#000000"
-                    ]
-                )
-    
-                # ✅ Add thousand separators
-                fig_emission_dist.update_traces(
-                    texttemplate="%{text:,.2f}",  # commas + 2 decimals
-                    textposition="outside"
-                )
-                fig_emission_dist.update_layout(
-                    template="plotly_white",
-                    showlegend=False,
-                    xaxis_tickangle=-35,
-                    yaxis_title="Tons of CO₂",
-                    height=400,
-                    yaxis_tickformat=","  # comma separators on axis ticks
-                    
-                )
-    
-                st.plotly_chart(fig_emission_dist, use_container_width=True)
-    
+            df_emission_dist = pd.DataFrame({
+                "Source": list(emission_data.keys()),
+                "Emissions": list(emission_data.values())
+            })
+
+            fig_emission_dist = px.bar(
+                df_emission_dist,
+                x="Source",
+                y="Emissions",
+                text="Emissions",
+                color="Source",
+                color_discrete_sequence=[
+                    "#1C7C54", "#17A2B8", "#808080", "#FFD700", "#4682B4", "#000000"
+                ]
+            )
+
+            # ✅ Add thousand separators
+            fig_emission_dist.update_traces(
+                texttemplate="%{text:,.2f}",
+                textposition="outside"
+            )
+            fig_emission_dist.update_layout(
+                template="plotly_white",
+                showlegend=False,
+                xaxis_tickangle=-35,
+                yaxis_title="Tons of CO₂",
+                height=400,
+                yaxis_tickformat=","
+            )
+
+            st.plotly_chart(fig_emission_dist, use_container_width=True)
+
     # ----------------------------------------------------
     # RAW DATA VIEW
     # ----------------------------------------------------

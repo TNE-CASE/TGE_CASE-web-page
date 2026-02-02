@@ -144,13 +144,37 @@ def run_sc2():
     
     
     # 🎯 Carbon price selector (work with either column name)
-    co2_cost_options = [0, 20, 40, 60, 80, 100]
+    co2_cost_options = [20, 40, 60, 80, 100, 1000, 10000, 100000]  # €/ton
     co2_cost = st.sidebar.select_slider(
         "CO₂ Price in Europe (€ per ton)",
         options=co2_cost_options,
         value=60,
         help="Select the EU carbon price column value."
     )
+
+    # 🎛️ Sourcing cost multiplier selector (Asia only) — optional if present in dataset
+    scm_col = next((c for c in df.columns if "sourcing" in c.lower() and "multiplier" in c.lower()), None)
+    if scm_col is not None:
+        scm_options = sorted(pd.to_numeric(df[scm_col], errors="coerce").dropna().unique().tolist())
+        if scm_options:
+            default_scm = 1.0 if 1.0 in scm_options else scm_options[0]
+            selected_scm = st.sidebar.selectbox(
+                "Sourcing Cost Multiplier (Asia)",
+                scm_options,
+                index=scm_options.index(default_scm),
+                help="Filter scenarios by the multiplier applied to Asia (Taiwan/Shanghai) sourcing costs."
+            )
+            df_scm = df[df[scm_col] == selected_scm].copy()
+            if not df_scm.empty:
+                df = df_scm
+                # If any derived views were computed earlier, re-derive them on the filtered dataset
+                try:
+                    data_by_weight = preprocess(df)  # noqa: F841
+                except Exception:
+                    pass
+            else:
+                st.warning("⚠️ No scenarios match this sourcing multiplier — showing all instead.")
+
     
     # Decide which column the dataset uses for EU carbon price
     price_col = None
@@ -328,13 +352,13 @@ def run_sc2():
     prod_sources = {}
     
     # Existing plants (f1)
-    for plant in ["TW", "SHA"]:
+    for plant in ["Taiwan", "Shanghai"]:
         prod_sources[plant] = sum(
             float(closest[c]) for c in f1_cols if c.startswith(f"f1[{plant},")
         )
     
     # New European factories (f2_2)
-    new_facilities = ["HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"]
+    new_facilities = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
     for fac in new_facilities:
         prod_sources[fac] = sum(
             float(closest[c]) for c in f2_2_cols if c.startswith(f"f2_2[{fac},")
@@ -394,7 +418,7 @@ def run_sc2():
     with colC:
         st.markdown("#### 🌿 CO₂ Factors (kg/unit)")
         co2_factors_mfg = pd.DataFrame({
-            "From mfg": ["TW", "SHA", "HUDTG", "CZMCT", "IEILG", "FIMPF", "PLZCA"],
+            "From mfg": ["Taiwan", "Shanghai", "Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
             "CO₂ kg/unit": [6.3, 9.8, 3.2, 2.8, 4.6, 5.8, 6.2 ],
         })
         co2_factors_mfg["CO₂ kg/unit"] = co2_factors_mfg["CO₂ kg/unit"].map(lambda v: f"{v:.1f}")
@@ -413,7 +437,7 @@ def run_sc2():
     f2_cols = [c for c in df.columns if c.startswith("f2[")]
     
     # --- Define crossdocks used in SC2 ---
-    crossdocks = ["ATVIE", "PLGDN", "FRCDG"]
+    crossdocks = ["Paris", "Gdansk", "Vienna"]
     
     # --- Calculate crossdock outbounds ---
     crossdock_flows = {}
@@ -489,43 +513,42 @@ def run_sc2():
     
     # --- Plants (f1, China region) ---
     plants = pd.DataFrame({
-        "Type": ["Plant", "Plant"],
-        "Lat": [31.23, 22.32],        # Shanghai & Southern China
-        "Lon": [121.47, 114.17]
+    "Type": ["Plant", "Plant"],
+    "Lat": [31.230416, 23.553100],
+    "Lon": [121.473701, 121.021100]
     })
-    
-    # --- Cross-docks (f2) ---
+
     crossdocks = pd.DataFrame({
         "Type": ["Cross-dock"] * 3,
-        "Lat": [48.85, 50.11, 37.98],   # France, Germany, Greece
-        "Lon": [2.35, 8.68, 23.73]
+        "Lat": [48.856610, 54.352100, 48.208500],
+        "Lon": [2.352220, 18.646400, 16.372100]
     })
-    
-    # --- Distribution Centres (DCs) ---
+
     dcs = pd.DataFrame({
         "Type": ["Distribution Centre"] * 4,
-        "Lat": [47.50, 48.14, 46.95, 45.46],   # Central Europe
-        "Lon": [19.04, 11.58, 7.44, 9.19]
+        "Lat": [50.040750, 50.954468, 56.946285, 28.116667],
+        "Lon": [15.776590, 1.862801, 24.105078, -17.216667]
     })
-    
-    # --- Retailer Hubs (f3) ---
+
     retailers = pd.DataFrame({
         "Type": ["Retailer Hub"] * 7,
-        "Lat": [55.67, 53.35, 51.50, 49.82, 45.76, 43.30, 40.42],  # North to South
-        "Lon": [12.57, -6.26, -0.12, 19.08, 4.83, 5.37, -3.70]
+        "Lat": [50.935173, 51.219890, 50.061430, 54.902720, 59.911491, 53.350140, 59.329440],
+        "Lon": [6.953101, 4.403460, 19.936580, 23.909610, 10.757933, -6.266155, 18.068610]
     })
+
     
     # --- New Production Facilities (f2_2) ---
     f2_2_cols = [c for c in closest.index if c.startswith("f2_2_bin")]
     
     # Define coordinates (one per possible facility)
     facility_coords = {
-        "f2_2_bin[HUDTG]": (49.61, 6.13),
-        "f2_2_bin[CZMCT]":  (44.83, 20.42),
-        "f2_2_bin[IEILG]": (47.09, 16.37),
-        "f2_2_bin[FIMPF]": (50.45, 14.50),
-        "f2_2_bin[PLZCA]": (42.70, 12.65),
+    "f2_2_bin[Budapest]": (47.497913, 19.040236),   # Budapest
+    "f2_2_bin[Prague]": (50.088040, 14.420760),   # Prague
+    "f2_2_bin[Cork]": (51.898514, -8.475604),   # Cork
+    "f2_2_bin[Helsinki]": (60.169520, 24.935450),   # Helsinki
+    "f2_2_bin[Warsaw]": (52.229770, 21.011780),   # Warsaw
     }
+
     
     active_facilities = []
     for col in f2_2_cols:
@@ -619,13 +642,13 @@ def run_sc2():
     import re
     
     def sum_flows_by_mode(prefix):
-        """Sum up air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3'."""
+        """Sum up air/Water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3'."""
         flow_cols = [c for c in df.columns if c.startswith(prefix + "[")]
-        totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
+        totals = {"air": 0.0, "Water": 0.0, "road": 0.0}
     
         for col in flow_cols:
             # Extract mode from inside brackets, e.g. f2_2[CZMC,DEBER,road]
-            match = re.search(r",\s*([a-zA-Z]+)\]$", col)
+            match = re.Waterrch(r",\s*([a-zA-Z]+)\]$", col)
             if match:
                 mode = match.group(1).lower()
                 if mode in totals:
@@ -640,7 +663,7 @@ def run_sc2():
         totals = sum_flows_by_mode(prefix)
         st.markdown(f"### {title}")
         cols = st.columns(3 if include_road else 2)
-        cols[0].metric("🚢 Sea", f"{totals['sea']:,.0f} units")
+        cols[0].metric("🚢 Water", f"{totals['Water']:,.0f} units")
         cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
         if include_road:
             cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
@@ -736,7 +759,7 @@ def run_sc2():
         st.subheader("Emission Distribution")
     
         # Expected emission columns
-        emission_cols = ["E_air", "E_sea", "E_road", "E_lastmile", "E_production"]
+        emission_cols = ["E_air", "E_Water", "E_road", "E_lastmile", "E_production"]
     
         # Check if all required emission columns exist
         missing_cols = [c for c in emission_cols if c not in df.columns]
@@ -745,19 +768,19 @@ def run_sc2():
     
         # --- Recalculate E_Production using the correct formula ---
         try:
-            if all(col in df.columns for col in ["E_air", "E_sea", "E_road", "E_lastmile", "CO2_Total"]):
+            if all(col in df.columns for col in ["E_air", "E_Water", "E_road", "E_lastmile", "CO2_Total"]):
                 corrected_E_prod = (
                     float(closest["CO2_Total"])
                     - float(closest["E_air"])
-                    - float(closest["E_sea"])
+                    - float(closest["E_Water"])
                     - float(closest["E_road"])
                     - float(closest["E_lastmile"])
                 )
     
-                # ✅ Include Total Transport (sum of Air + Sea + Road)
+                # ✅ Include Total Transport (sum of Air + Water + Road)
                 total_transport = (
                     float(closest["E_air"])
-                    + float(closest["E_sea"])
+                    + float(closest["E_Water"])
                     + float(closest["E_road"])
                 )
     
@@ -765,7 +788,7 @@ def run_sc2():
                     "Production": corrected_E_prod,
                     "Last-mile": float(closest["E_lastmile"]),
                     "Air": float(closest["E_air"]),
-                    "Sea": float(closest["E_sea"]),
+                    "Water": float(closest["E_Water"]),
                     "Road": float(closest["E_road"]),
                     "Total Transport": total_transport,
                 }
