@@ -124,7 +124,7 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Global Supply Chain Optimization (Gurobi)")
+st.title("🌍 Global Supply Chain Optimization ")
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
@@ -276,7 +276,7 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from a Gurobi model."""
+    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' model."""
     totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
     if model is None:
         return totals
@@ -310,7 +310,7 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
 
 
 def render_transport_flows_by_mode(model):
-    st.markdown("## 🚚 Transport Flows by Mode")
+    st.markdown(" 🚚 Transport Flows by Mode")
     display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
     display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
     display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
@@ -918,10 +918,10 @@ def _render_puzzle_mode():
     }
 
     # Node selections
-    st.markdown("#### Facility selection")
+    st.markdown(" Facility selection")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.caption("Layer 1 Plants")
+        st.caption("Plants")
         plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
     with col2:
         st.caption("Cross-docks")
@@ -930,39 +930,39 @@ def _render_puzzle_mode():
         st.caption("Distribution Centers")
         dcs = [d for d in cfg["dcs_all"] if st.checkbox(d, value=True, key=f"pz_dc_{d}")]
     with col4:
-        st.caption("Layer 2 New Facilities")
+        st.caption("New Facilities")
         new_locs = [n for n in cfg["new_locs_all"] if st.checkbox(n, value=False, key=f"pz_new_{n}")]
 
     total_demand = int(sum(cfg["demand"].values()))
     st.info(f"Total demand (units): **{total_demand:,}**")
 
-    st.markdown("#### Production split")
+    st.markdown(" Production split")
     share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
 
-    st.caption("Layer 1: split across selected plants (we normalize automatically)")
+    st.caption("Layer 1: split across selected plants (automatically normalized)")
     plant_shares_raw = {}
     for p in (plants or cfg["plants_all"]):
         plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
 
     if new_locs:
-        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
+        st.caption("Layer 2: split across selected new facilities (automatically normalized)")
         new_shares_raw = {}
         for n in new_locs:
             new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
     else:
         new_shares_raw = {}
 
-    st.markdown("#### Transport mode shares")
-    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder). Shares are set in **percent (%).**")
+    st.markdown(" Transport mode shares")
+    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder). Shares are set in percent (%).")
 
-    st.markdown("**Layer 1 (Plant → Cross-dock)**")
+    st.markdown("Layer 1 (Plant → Cross-dock)")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
         sea_pct = st.slider(f"{p} – Sea share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_sea_{p}")
         sea = float(sea_pct) / 100.0
         l1_mode_share_by_plant[p] = {"sea": float(sea)}
 
-    st.markdown("**Layer 2 (Cross-dock / New → DC)**")
+    st.markdown("Layer 2 (Cross-dock / New → DC)")
     l2_mode_share_by_origin = {}
     for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
         with st.expander(f"{o}", expanded=False):
@@ -978,7 +978,7 @@ def _render_puzzle_mode():
             air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"sea": float(sea), "air": float(air)}
 
-    st.markdown("**Layer 3 (DC → Retailer)**")
+    st.markdown("Layer 3 (DC → Retailer)")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
@@ -1049,11 +1049,11 @@ def _render_puzzle_mode():
             st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
 
         # Base case values + percent-change comparisons (to show the trade-off)
-        st.markdown("#### 🔎 Base case comparison")
+        st.markdown(" 🔎 Base case comparison")
         bc1, bc2 = st.columns(2)
 
         with bc1:
-            st.markdown("**Min Cost base case**")
+            st.markdown("Min Cost base case")
             st.metric(
                 "Cost (€)",
                 f"{MIN_COST_BASE_CASE_EUR:,.2f}",
@@ -1066,7 +1066,7 @@ def _render_puzzle_mode():
             )
 
         with bc2:
-            st.markdown("**Min CO₂ base case**")
+            st.markdown("Min CO₂ base case")
             st.metric(
                 "Cost (€)",
                 f"{MIN_CO2_BASE_CASE_EUR:,.2f}",
@@ -1093,7 +1093,7 @@ def _render_puzzle_mode():
         # ===========================================
         # 🌍 MAP (Puzzle Mode)
         # ===========================================
-        st.markdown("## 🌍 Global Supply Chain Map")
+        st.markdown(" 🌍 Global Supply Chain Map")
 
         nodes = [
             ("Plant", 31.230416, 121.473701, "Shanghai"),
@@ -1211,7 +1211,7 @@ def _render_puzzle_mode():
         # ===========================================
         # 🏭 PRODUCTION OUTBOUND BREAKDOWN (Puzzle)
         # ===========================================
-        st.markdown("## 🏭 Production Outbound Breakdown")
+        st.markdown("🏭 Production Outbound Breakdown")
 
         prod_sources = dict(results.get("puzzle_prod_sources_units", {}))
         unmet_units = float(results.get("puzzle_unmet_demand_units", 0.0))
@@ -1251,7 +1251,7 @@ def _render_puzzle_mode():
         # ===========================================
         # 🚚 CROSS-DOCK OUTBOUND BREAKDOWN (Puzzle)
         # ===========================================
-        st.markdown("## 🚚 Cross-dock Outbound Breakdown")
+        st.markdown("🚚 Cross-dock Outbound Breakdown")
 
         cd_out = results.get("puzzle_crossdock_out_units", {})
         if not cd_out or sum(cd_out.values()) <= 1e-9:
@@ -1267,8 +1267,7 @@ def _render_puzzle_mode():
                 df_crossdock,
                 names="Crossdock",
                 values="Shipped (units)",
-                hole=0.3,
-                title="Cross-dock Outbound Share",
+                hole=0.3
             )
 
             fig_crossdock.update_layout(
@@ -1279,7 +1278,7 @@ def _render_puzzle_mode():
             )
 
             st.plotly_chart(fig_crossdock, use_container_width=True)
-            st.markdown("#### 🚚 Cross-dock Outbound Table")
+            st.markdown(" 🚚 Cross-dock Outbound Table")
             st.dataframe(df_crossdock.round(2), use_container_width=True)
 
         # Capacity sanity check
@@ -1290,7 +1289,7 @@ def _render_puzzle_mode():
                 st.dataframe(pd.DataFrame({"DC": list(viol.keys()), "Excess units": list(viol.values())}).set_index("DC"))
 
         # Flow totals by mode
-        st.markdown("## 🚚 Transport Flows by Mode")
+        st.markdown(" 🚚 Transport Flows by Mode")
         cL1, cL2, cL2n, cL3 = st.columns(4)
         with cL1:
             st.caption("Layer 1")
@@ -1522,7 +1521,7 @@ co2_cost_per_ton = 37.5
 # RUN OPTIMIZATION
 # ------------------------------------------------------------
 if st.button("Run Optimization"):
-    with st.spinner("⚙ Optimizing with Gurobi..."):
+    with st.spinner("⚙ Optimizing ..."):
         try:
             # 1) Choose which model to run
             
@@ -1795,7 +1794,7 @@ if st.button("Run Optimization"):
                 color_discrete_map=color_map,
                 projection="natural earth",
                 scope="world",
-                title="Global Supply Chain Structure",
+                
             )
             
             # compute activity once
@@ -1889,8 +1888,7 @@ if st.button("Run Optimization"):
                 df_prod,
                 names="Source",
                 values="Units Produced",
-                hole=0.3,
-                title="Production Share by Source",
+                hole=0.3
             )
             
             color_map = {name: col for name, col in zip(df_prod["Source"], px.colors.qualitative.Set2)}
@@ -1942,8 +1940,7 @@ if st.button("Run Optimization"):
                     df_crossdock,
                     names="Crossdock",
                     values="Shipped (units)",
-                    hole=0.3,
-                    title="Cross-dock Outbound Share"
+                    hole=0.3
                 )
             
                 fig_crossdock.update_layout(
@@ -2040,7 +2037,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 💰 OBJECTIVE
                     # ===================================================
-                    st.markdown("## 💰 Objective Value (Excluding Slack Penalty)")
+                    st.markdown("## 💰 Objective Value ")
                     st.metric(
                         "Objective (€)",
                         f"{results_uns['Objective_value']:,.2f}"
@@ -2049,7 +2046,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🌍 MAP
                     # ===================================================
-                    st.markdown("## 🌍 Global Supply Chain Map (Fallback Model)")
+                    st.markdown("## 🌍 Global Supply Chain Map")
 
                     nodes = [
                     ("Plant", 31.23, 121.47, "Shanghai"),
@@ -2171,7 +2168,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🏭 PRODUCTION OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
+                    st.markdown(" 🏭 Production Outbound Breakdown ")
 
                     f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
                     f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
@@ -2202,7 +2199,7 @@ if st.button("Run Optimization"):
                         names="Source",
                         values="Units Produced",
                         hole=0.3,
-                        title="Production Share by Source (Fallback Model)",
+                        title="Production Share by Source",
                     )
 
                     fig_prod.update_traces(
@@ -2216,7 +2213,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🚚 CROSS-DOCK OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
+                    st.markdown(" 🚚 Cross-dock Outbound Breakdown ")
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
@@ -2243,8 +2240,7 @@ if st.button("Run Optimization"):
                             df_crossdock,
                             names="Crossdock",
                             values="Shipped (units)",
-                            hole=0.3,
-                            title="Cross-dock Outbound Share (Fallback Model)",
+                            hole=0.3
                         )
 
                         st.plotly_chart(fig_crossdock, use_container_width=True)
