@@ -689,29 +689,29 @@ def run_sc1():
     # --- Layer 1: Plants → Cross-docks ---
     st.markdown("### Layer 1: Plants → Cross-docks")
     col1, col2 = st.columns(2)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer1Sea'):,.0f} units")
+    col1.metric("🚢 water", f"{get_value_safe('Layer1water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer1Air'):,.0f} units")
-    if get_value_safe("Layer1Sea") + get_value_safe("Layer1Air") == 0:
+    if get_value_safe("Layer1water") + get_value_safe("Layer1Air") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
     # --- Layer 2: Cross-docks → DCs ---
     st.markdown("### Layer 2: Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer2Sea'):,.0f} units")
+    col1.metric("🚢 water", f"{get_value_safe('Layer2water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer2Air'):,.0f} units")
     col3.metric("🚛 Road", f"{get_value_safe('Layer2Road'):,.0f} units")
-    if get_value_safe("Layer2Sea") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
+    if get_value_safe("Layer2water") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
     # --- Layer 3: DCs → Retailers ---
     st.markdown("### Layer 3: DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Sea", f"{get_value_safe('Layer3Sea'):,.0f} units")
+    col1.metric("🚢 water", f"{get_value_safe('Layer3water'):,.0f} units")
     col2.metric("✈️ Air", f"{get_value_safe('Layer3Air'):,.0f} units")
     col3.metric("🚛 Road", f"{get_value_safe('Layer3Road'):,.0f} units")
-    if get_value_safe("Layer3Sea") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
+    if get_value_safe("Layer3water") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
     
@@ -774,7 +774,7 @@ def run_sc1():
             "Production": ["E_Production", "E(Production)", "E_production"],
             "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile"],
             "Air": ["E_Air", "E(Air)", "E_air"],
-            "Sea": ["E_Sea", "E(Sea)", "E_sea"],
+            "water": ["E_water", "E(water)", "E_water"],
             "Road": ["E_Road", "E(Road)", "E_road"],
         }
 
@@ -802,9 +802,9 @@ def run_sc1():
             for name, keys in emission_aliases.items()
         }
 
-        # ✅ Add Total Transport (sum of Air + Sea + Road)
+        # ✅ Add Total Transport (sum of Air + water + Road)
         emission_data["Total Transport"] = (
-            emission_data.get("Air", 0) + emission_data.get("Sea", 0) + emission_data.get("Road", 0)
+            emission_data.get("Air", 0) + emission_data.get("water", 0) + emission_data.get("Road", 0)
         )
 
         if sum(emission_data.values()) == 0:

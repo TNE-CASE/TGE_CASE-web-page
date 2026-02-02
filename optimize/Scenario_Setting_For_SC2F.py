@@ -107,16 +107,16 @@ def run_scenario(
         }
     
     if co2_emission_factor is None:
-        co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+        co2_emission_factor = {"air": 0.000971, "water": 0.000027, "road": 0.000076}
     
-    service_level = {'air': service_level, 'sea': service_level, 'road': service_level}
+    service_level = {'air': service_level, 'water': service_level, 'road': service_level}
     average_distance = 9600
-    speed = {'air': 800, 'sea': 10, 'road': 40}
+    speed = {'air': 800, 'water': 10, 'road': 40}
     std_demand = np.std(list(demand.values()))
 
     if data is None:
         data = {
-            "transportation": ["air", "sea", "road"],
+            "transportation": ["air", "water", "road"],
             "t (€/kg-km)": [0.0105, 0.0013, 0.0054],
         }
     
@@ -125,7 +125,7 @@ def run_scenario(
     
     # LT (days)
     data["LT (days)"] = [
-        np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
+        np.round((average_distance * (1.2 if m == "water" else 1)) / (speed[m] * 24), 13)
         for m in speed
     ]    
     # Z-scores and Densities
@@ -142,8 +142,8 @@ def run_scenario(
 ]    
     
     
-    Modes = ["air", "sea", "road"]
-    ModesL1 = ["air", "sea"]
+    Modes = ["air", "water", "road"]
+    ModesL1 = ["air", "water"]
     Plants = ["Taiwan", "Shanghai"]
     Crossdocks = ["Vienna", "Gdansk", "Paris"]
     New_Locs = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
@@ -300,20 +300,20 @@ def run_scenario(
     
     #Emission to get
     # ---------- CO2 breakdown by transport mode ----------
-    # L1 (only air & sea)
+    # L1 (only air & water)
     CO2_tr_L1_air = quicksum(
         co2_emission_factor["air"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "air"]
         for p in Plants for c in Crossdocks
     )
-    CO2_tr_L1_sea = quicksum(
-        co2_emission_factor["sea"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "sea"]
+    CO2_tr_L1_water = quicksum(
+        co2_emission_factor["water"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "water"]
         for p in Plants for c in Crossdocks
     )
     
     # L2
     CO2_tr_L2_air  = quicksum(co2_emission_factor["air"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "air"]
                               for c in Crossdocks for d in Dcs)
-    CO2_tr_L2_sea  = quicksum(co2_emission_factor["sea"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "sea"]
+    CO2_tr_L2_water  = quicksum(co2_emission_factor["water"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "water"]
                               for c in Crossdocks for d in Dcs)
     CO2_tr_L2_road = quicksum(co2_emission_factor["road"] * dist2.loc[c, d] * product_weight_ton * f2[c, d, "road"]
                               for c in Crossdocks for d in Dcs)
@@ -321,7 +321,7 @@ def run_scenario(
     # L3
     CO2_tr_L3_air  = quicksum(co2_emission_factor["air"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "air"]
                               for d in Dcs for r in Retailers)
-    CO2_tr_L3_sea  = quicksum(co2_emission_factor["sea"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "sea"]
+    CO2_tr_L3_water  = quicksum(co2_emission_factor["water"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "water"]
                               for d in Dcs for r in Retailers)
     CO2_tr_L3_road = quicksum(co2_emission_factor["road"] * dist3.loc[d, r] * product_weight_ton * f3[d, r, "road"]
                               for d in Dcs for r in Retailers)
@@ -562,8 +562,8 @@ def run_scenario(
          for p in Plants
          for c in Crossdocks
          for mo in Modes
-         if mo == "sea"),
-        name="SeaDamage_f1"
+         if mo == "water"),
+        name="waterDamage_f1"
     )
            
         # Rerouting can be applied
@@ -671,7 +671,7 @@ def run_scenario(
         print("Total objective:", model.ObjVal)   
         
     E_air         = (CO2_tr_L1_air + CO2_tr_L2_air + CO2_tr_L3_air).getValue()
-    E_sea         = (CO2_tr_L1_sea + CO2_tr_L2_sea + CO2_tr_L3_sea).getValue()
+    E_water         = (CO2_tr_L1_water + CO2_tr_L2_water + CO2_tr_L3_water).getValue()
     E_road        = (CO2_tr_L2_road + CO2_tr_L3_road).getValue()   # no road on L1
     E_lastmile    = LastMile_CO2.getValue()
     E_production  = CO2_prod_L1.getValue()
@@ -708,7 +708,7 @@ def run_scenario(
     
     # --- Emission Calculations ---
     "E_air": E_air,
-    "E_sea": E_sea,
+    "E_water": E_water,
     "E_road": E_road,
     "E_lastmile": E_lastmile,
     "E_production": E_production,

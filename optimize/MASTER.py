@@ -6,7 +6,7 @@ Fully parametric multi-layer supply-chain optimization model.
 
 - Plants, cross-docks, DCs, and potential new locations can be switched on/off
   via input lists (active_*).
-- Transport modes (air / sea / road) can be switched on/off separately
+- Transport modes (air / water / road) can be switched on/off separately
   for each layer (L1, L2, L3).
 - Retailers and their demand stay as in the original models.
 
@@ -96,8 +96,8 @@ def run_scenario_master(
     unit_inventory_holdingCost=0.85,
     service_level = None,
 # --- OPTIONAL: Enforce per-layer transport-mode shares (percentages) ---
-# Provide dicts like {'air': 0.2, 'sea': 0.0, 'road': 0.8} (values will be normalized).
-# You may also provide a tuple/list (air, sea, road).
+# Provide dicts like {'air': 0.2, 'water': 0.0, 'road': 0.8} (values will be normalized).
+# You may also provide a tuple/list (air, water, road).
 mode_share_L1=None,
 mode_share_L2=None,
 mode_share_L1_by_plant=None,
@@ -130,7 +130,7 @@ mode_share_tol=1e-6,
     new_locs_all=None,
 
     # --- Scenario toggles ---
-    suez_canal=False,              # blocks sea on L1
+    suez_canal=False,              # blocks water on L1
     oil_crises=False,              # increases transport cost
     volcano=False,                 # blocks all air
     trade_war=False,               # increases sourcing cost
@@ -221,12 +221,12 @@ mode_share_tol=1e-6,
 
     # Transport emission factor (ton CO2 per ton-km)
     if co2_emission_factor is None:
-        co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+        co2_emission_factor = {"air": 0.000971, "water": 0.000027, "road": 0.000076}
 
     # Per-mode transport & inventory meta
     if data is None:
         data = {
-            "transportation": ["air", "sea", "road"],
+            "transportation": ["air", "water", "road"],
             "t (€/kg-km)":    [0.0105, 0.0013, 0.0054],
         }
     df = pd.DataFrame(data).set_index("transportation")
@@ -238,21 +238,21 @@ mode_share_tol=1e-6,
     # Service level per mode
     service_level = {
         "air": service_level,
-        "sea": service_level,
+        "water": service_level,
         "road": service_level,
     }
 
     # Build LT, z, φ, and SS(€/unit) if missing
     if True:
         average_distance = 9600  # rough benchmark
-        speed = {"air": 800, "sea": 10, "road": 40}
+        speed = {"air": 800, "water": 10, "road": 40}
         std_demand = np.std(list(demand.values()))
 
         # transportation artık index olduğu için mode sırasını df.index'ten alıyoruz
         modes = list(df.index)
 
         df["LT (days)"] = [
-            np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
+            np.round((average_distance * (1.2 if m == "water" else 1)) / (speed[m] * 24), 13)
             for m in modes
         ]
 
@@ -413,9 +413,9 @@ mode_share_tol=1e-6,
     # Basic mode defaults
 
 
-    ModesL1_default = ["air", "sea"]
-    ModesL2_default = ["air", "sea", "road"]
-    ModesL3_default = ["air", "sea", "road"]
+    ModesL1_default = ["air", "water"]
+    ModesL2_default = ["air", "water", "road"]
+    ModesL3_default = ["air", "water", "road"]
 
     ModesL1 = ModesL1_default if active_modes_L1 is None else list(active_modes_L1)
     # L1 (Plant -> Crossdock): road is forbidden
@@ -425,8 +425,8 @@ mode_share_tol=1e-6,
 
     # --- Mode-share parsing (node-based) ---
     # Goal:
-    #   - Layer 1 (Plant -> Crossdock): enforce per-plant mode shares (air/sea only). Road is forbidden.
-    #   - Layer 2 (Crossdock/NewLoc -> DC): enforce per-origin (crossdock or new loc) mode shares (air/sea/road).
+    #   - Layer 1 (Plant -> Crossdock): enforce per-plant mode shares (air/water only). Road is forbidden.
+    #   - Layer 2 (Crossdock/NewLoc -> DC): enforce per-origin (crossdock or new loc) mode shares (air/water/road).
     # Backward compatible:
     #   - If mode_share_L1_by_plant / mode_share_L2_by_origin are None, we fall back to global mode_share_L1 / mode_share_L2.
 
@@ -434,7 +434,7 @@ mode_share_tol=1e-6,
         """Parse a share spec into a dict over allowed_modes.
 
         spec can be:
-          - dict like {'air':0.3, 'sea':None} (at most one None -> remainder to 1)
+          - dict like {'air':0.3, 'water':None} (at most one None -> remainder to 1)
           - tuple/list aligned with allowed_modes length
 
         Missing keys are treated as 0.0.
@@ -499,7 +499,7 @@ mode_share_tol=1e-6,
         return out
 
     # ---- Build node-based share maps ----
-    # L1: per plant shares over (air, sea)
+    # L1: per plant shares over (air, water)
     share_L1_by_plant = None
     if mode_share_L1_by_plant is not None:
         share_L1_by_plant = {}
@@ -508,14 +508,14 @@ mode_share_tol=1e-6,
                 raise ValueError(f"mode_share_L1_by_plant missing entry for active plant '{p}'")
             share_L1_by_plant[p] = _parse_share_spec(
                 mode_share_L1_by_plant[p],
-                allowed_modes=['air', 'sea'],
+                allowed_modes=['air', 'water'],
                 name=f"L1 share for plant {p}",
             )
     elif mode_share_L1 is not None:
-        g = _parse_share_spec(mode_share_L1, allowed_modes=['air', 'sea'], name='global L1 share')
+        g = _parse_share_spec(mode_share_L1, allowed_modes=['air', 'water'], name='global L1 share')
         share_L1_by_plant = {p: g for p in Plants}
 
-    # L2: per origin (crossdock OR new loc) shares over (air, sea, road)
+    # L2: per origin (crossdock OR new loc) shares over (air, water, road)
     share_L2_by_origin = None
     if mode_share_L2_by_origin is not None:
         share_L2_by_origin = {}
@@ -525,7 +525,7 @@ mode_share_tol=1e-6,
                 raise ValueError(f"mode_share_L2_by_origin missing entry for active crossdock '{c}'")
             share_L2_by_origin[c] = _parse_share_spec(
                 mode_share_L2_by_origin[c],
-                allowed_modes=['air', 'sea', 'road'],
+                allowed_modes=['air', 'water', 'road'],
                 name=f"L2 share for origin {c}",
             )
         # New locations
@@ -534,11 +534,11 @@ mode_share_tol=1e-6,
                 raise ValueError(f"mode_share_L2_by_origin missing entry for active new loc '{n}'")
             share_L2_by_origin[n] = _parse_share_spec(
                 mode_share_L2_by_origin[n],
-                allowed_modes=['air', 'sea', 'road'],
+                allowed_modes=['air', 'water', 'road'],
                 name=f"L2 share for origin {n}",
             )
     elif mode_share_L2 is not None:
-        g = _parse_share_spec(mode_share_L2, allowed_modes=['air', 'sea', 'road'], name='global L2 share')
+        g = _parse_share_spec(mode_share_L2, allowed_modes=['air', 'water', 'road'], name='global L2 share')
         share_L2_by_origin = {o: g for o in list(Crossdocks) + list(New_Locs)}
 
     # Ensure any positively requested mode exists in the per-layer mode sets (so vars/constraints exist)
@@ -973,14 +973,14 @@ mode_share_tol=1e-6,
 
     # Scenario-specific structural constraints
 
-    # SUEZ CANAL BLOCKADE → block sea on L1
-    if suez_canal and f1 and ("sea" in ModesL1):
+    # SUEZ CANAL BLOCKADE → block water on L1
+    if suez_canal and f1 and ("water" in ModesL1):
         model.addConstrs(
             (
-                f1[p, c, "sea"] == 0
+                f1[p, c, "water"] == 0
                 for p in Plants for c in Crossdocks
             ),
-            name="SeaDamage_f1",
+            name="waterDamage_f1",
         )
 
     # VOLCANO: block air on all layers (in addition to mode removal above)
@@ -1095,10 +1095,10 @@ mode_share_tol=1e-6,
                              (CO2_tr_L2_new_by_mode.get("air", 0) if 'CO2_tr_L2_new_by_mode' in locals() else 0) +
                              (CO2_tr_L3_by_mode.get("air", 0) if 'CO2_tr_L3_by_mode' in locals() else 0))
 
-    E_sea        = _safe_val((CO2_tr_L1_by_mode.get("sea", 0) if 'CO2_tr_L1_by_mode' in locals() else 0) +
-                             (CO2_tr_L2_by_mode.get("sea", 0) if 'CO2_tr_L2_by_mode' in locals() else 0) +
-                             (CO2_tr_L2_new_by_mode.get("sea", 0) if 'CO2_tr_L2_new_by_mode' in locals() else 0) +
-                             (CO2_tr_L3_by_mode.get("sea", 0) if 'CO2_tr_L3_by_mode' in locals() else 0))
+    E_water        = _safe_val((CO2_tr_L1_by_mode.get("water", 0) if 'CO2_tr_L1_by_mode' in locals() else 0) +
+                             (CO2_tr_L2_by_mode.get("water", 0) if 'CO2_tr_L2_by_mode' in locals() else 0) +
+                             (CO2_tr_L2_new_by_mode.get("water", 0) if 'CO2_tr_L2_new_by_mode' in locals() else 0) +
+                             (CO2_tr_L3_by_mode.get("water", 0) if 'CO2_tr_L3_by_mode' in locals() else 0))
 
     E_road       = _safe_val((CO2_tr_L2_by_mode.get("road", 0) if 'CO2_tr_L2_by_mode' in locals() else 0) +
                              (CO2_tr_L2_new_by_mode.get("road", 0) if 'CO2_tr_L2_new_by_mode' in locals() else 0) +
@@ -1165,7 +1165,7 @@ mode_share_tol=1e-6,
 
         # --- Emission Calculations ---
         "E_air": E_air,
-        "E_sea": E_sea,
+        "E_water": E_water,
         "E_road": E_road,
         "E_lastmile": E_lastmile,
         "E_production": E_production,

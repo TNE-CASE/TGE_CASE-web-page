@@ -107,16 +107,16 @@ def run_scenario(
         }
     
     if co2_emission_factor is None:
-        co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+        co2_emission_factor = {"air": 0.000971, "water": 0.000027, "road": 0.000076}
     
-    service_level = {'air': service_level, 'sea': service_level, 'road': service_level}
+    service_level = {'air': service_level, 'water': service_level, 'road': service_level}
     average_distance = 9600
-    speed = {'air': 800, 'sea': 10, 'road': 40}
+    speed = {'air': 800, 'water': 10, 'road': 40}
     std_demand = np.std(list(demand.values()))
 
     if data is None:
         data = {
-            "transportation": ["air", "sea", "road"],
+            "transportation": ["air", "water", "road"],
             "t (€/kg-km)": [0.0105, 0.0013, 0.0054],
         }
     
@@ -125,7 +125,7 @@ def run_scenario(
     
     # LT (days)
     data["LT (days)"] = [
-        np.round((average_distance * (1.2 if m == "sea" else 1)) / (speed[m] * 24), 13)
+        np.round((average_distance * (1.2 if m == "water" else 1)) / (speed[m] * 24), 13)
         for m in speed
     ]    
     # Z-scores and Densities
@@ -142,8 +142,8 @@ def run_scenario(
     ]    
     
     
-    Modes = ["air", "sea", "road"]
-    ModesL1 = ["air", "sea"]
+    Modes = ["air", "water", "road"]
+    ModesL1 = ["air", "water"]
     Plants = ["Taiwan", "Shanghai"]
     Crossdocks = ["Vienna", "Gdansk", "Paris"]
     New_Locs = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
@@ -241,20 +241,20 @@ def run_scenario(
     
     #Emission to get
     # ---------- CO2 breakdown by transport mode ----------
-    # L1 (only air & sea)
+    # L1 (only air & water)
     CO2_tr_L1_air = quicksum(
         co2_emission_factor["air"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "air"]
         for p in Plants for c in Crossdocks
     )
-    CO2_tr_L1_sea = quicksum(
-        co2_emission_factor["sea"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "sea"]
+    CO2_tr_L1_water = quicksum(
+        co2_emission_factor["water"] * dist1.loc[p, c] * product_weight_ton * f1[p, c, "water"]
         for p in Plants for c in Crossdocks
     )
     
     # L2
     CO2_tr_L2_air  = quicksum(co2_emission_factor["air"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "air"]
                               for c in Crossdocks for d in Dcs)
-    CO2_tr_L2_sea  = quicksum(co2_emission_factor["sea"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "sea"]
+    CO2_tr_L2_water  = quicksum(co2_emission_factor["water"]  * dist2.loc[c, d] * product_weight_ton * f2[c, d, "water"]
                               for c in Crossdocks for d in Dcs)
     CO2_tr_L2_road = quicksum(co2_emission_factor["road"] * dist2.loc[c, d] * product_weight_ton * f2[c, d, "road"]
                               for c in Crossdocks for d in Dcs)
@@ -262,7 +262,7 @@ def run_scenario(
     # L3
     CO2_tr_L3_air  = quicksum(co2_emission_factor["air"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "air"]
                               for d in Dcs for r in Retailers)
-    CO2_tr_L3_sea  = quicksum(co2_emission_factor["sea"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "sea"]
+    CO2_tr_L3_water  = quicksum(co2_emission_factor["water"]  * dist3.loc[d, r] * product_weight_ton * f3[d, r, "water"]
                               for d in Dcs for r in Retailers)
     CO2_tr_L3_road = quicksum(co2_emission_factor["road"] * dist3.loc[d, r] * product_weight_ton * f3[d, r, "road"]
                               for d in Dcs for r in Retailers)
@@ -450,8 +450,8 @@ def run_scenario(
          for p in Plants
          for c in Crossdocks
          for mo in Modes
-         if mo == "sea"),
-        name="SeaDamage_f1"
+         if mo == "water"),
+        name="waterDamage_f1"
     )
            
         # Rerouting can be applied
@@ -525,7 +525,7 @@ def run_scenario(
         print("Total objective:", model.ObjVal)   
         
     E_air         = (CO2_tr_L1_air + CO2_tr_L2_air + CO2_tr_L3_air).getValue()
-    E_sea         = (CO2_tr_L1_sea + CO2_tr_L2_sea + CO2_tr_L3_sea).getValue()
+    E_water         = (CO2_tr_L1_water + CO2_tr_L2_water + CO2_tr_L3_water).getValue()
     E_road        = (CO2_tr_L2_road + CO2_tr_L3_road).getValue()   # no road on L1
     E_lastmile    = LastMile_CO2.getValue()
     E_production  = CO2_prod_L1.getValue()
@@ -554,7 +554,7 @@ def run_scenario(
     
     # --- Emission Calculations ---
     "E_air": E_air,
-    "E_sea": E_sea,
+    "E_water": E_water,
     "E_road": E_road,
     "E_lastmile": E_lastmile,
     "E_production": E_production,
@@ -675,7 +675,7 @@ def simulate_scenarios_full():
                 record.get("CO2_Total", 0),                      # Total Emissions (tons)
                 record.get("Service_Level", 0),                  # Service Level
                 record.get("E_air", 0),                          # E(Air)
-                record.get("E_sea", 0),                          # E(Sea)
+                record.get("E_water", 0),                          # E(water)
                 record.get("E_road", 0),                         # E(Road)
                 record.get("E_lastmile", 0),                     # E(Last-mile)
                 record.get("E_production", 0),                   # E(Production)
@@ -693,23 +693,23 @@ def simulate_scenarios_full():
                 record.get("f1[Taiwan,Vienna,air]", 0)
                 + record.get("f1[Taiwan,Gdansk,air]", 0)
                 + record.get("f1[Taiwan,Paris,air]", 0)
-                +record.get("f1[Taiwan,Vienna,sea]", 0)
-                + record.get("f1[Taiwan,Gdansk,sea]", 0)
-                + record.get("f1[Taiwan,Paris,sea]", 0),             # Taiwan Outbound
+                +record.get("f1[Taiwan,Vienna,water]", 0)
+                + record.get("f1[Taiwan,Gdansk,water]", 0)
+                + record.get("f1[Taiwan,Paris,water]", 0),             # Taiwan Outbound
                 record.get("f1[Shanghai,Vienna,air]", 0)
                 + record.get("f1[Shanghai,Gdansk,air]", 0)
                 + record.get("f1[Shanghai,Paris,air]", 0)
-                +record.get("f1[Shanghai,Vienna,sea]", 0)
-                + record.get("f1[Shanghai,Gdansk,sea]", 0)
-                + record.get("f1[Shanghai,Paris,sea]", 0),            # Shanghai Outbound
+                +record.get("f1[Shanghai,Vienna,water]", 0)
+                + record.get("f1[Shanghai,Gdansk,water]", 0)
+                + record.get("f1[Shanghai,Paris,water]", 0),            # Shanghai Outbound
                 
                 sum(v for k, v in record.items() if "f1" in k and "air"  in k),  # Layer1Air (units)
-                sum(v for k, v in record.items() if "f1" in k and "sea"  in k),  # Layer1Sea
+                sum(v for k, v in record.items() if "f1" in k and "water"  in k),  # Layer1water
                 sum(v for k, v in record.items() if "f2" in k and "air"  in k),  # Layer2Air
-                sum(v for k, v in record.items() if "f2" in k and "sea"  in k),  # Layer2Sea
+                sum(v for k, v in record.items() if "f2" in k and "water"  in k),  # Layer2water
                 sum(v for k, v in record.items() if "f2" in k and "road" in k),  # Layer2Road
                 sum(v for k, v in record.items() if "f3" in k and "air"  in k),  # Layer3Air
-                sum(v for k, v in record.items() if "f3" in k and "sea"  in k),  # Layer3Sea
+                sum(v for k, v in record.items() if "f3" in k and "water"  in k),  # Layer3water
                 sum(v for k, v in record.items() if "f3" in k and "road" in k),  # Layer3Road
                 sum(v for k, v in record.items() if "f3" in k)                   # DemandFulfillment
             ]
@@ -717,13 +717,13 @@ def simulate_scenarios_full():
 
         headers = [
             "CO2 Reduction %", "Total Emissions", "Service Level",
-            "E(Air)", "E(Sea)", "E(Road)",
+            "E(Air)", "E(water)", "E(Road)",
             "E(Last-mile)", "E(Production)",
             "Total Cost", "Transportation Cost",
             "Sourcing/Handling Cost", "CO2 Cost in Production",
             "Transit Inventory Cost", "Taiwan Outbound", "Shanghai Outbound",
-            "Layer1Air", "Layer1Sea", "Layer2Air", "Layer2Sea", "Layer2Road",
-            "Layer3Air", "Layer3Sea", "Layer3Road", "DemandFulfillment"
+            "Layer1Air", "Layer1water", "Layer2Air", "Layer2water", "Layer2Road",
+            "Layer3Air", "Layer3water", "Layer3Road", "DemandFulfillment"
         ]
 
 
