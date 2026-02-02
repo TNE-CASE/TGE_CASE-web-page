@@ -20,6 +20,14 @@ import gurobipy as gp
 import inspect
 import numpy as np
 from scipy.stats import norm
+from datetime import datetime, timezone
+
+# Puzzle submissions -> SharePoint Excel (implemented in post_data.py)
+# If post_data.py is missing or not configured, Puzzle Mode still works; only "Submit" will be disabled.
+try:
+    from post_data import push_puzzle_submission
+except Exception:
+    push_puzzle_submission = None
 
 # Gamification mode extracted into a separate module (toggleable)
 from gamification import render_gamification_mode
@@ -116,7 +124,7 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Global Supply Chain Optimization (Gurobi)")
+st.title("🌍 Global Supply Chain Optimization ")
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
@@ -202,7 +210,7 @@ CITY_TO_KEYS = {
 
     # DCs 
     "Pardubice": ["Pardubice"],
-    "Lille": ["Lille"],
+    "Calais": ["Calais"],
     "Riga": ["Riga"],
     "LaGomera": ["LaGomera"],
 
@@ -268,7 +276,7 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from a Gurobi model."""
+    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
     totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
     if model is None:
         return totals
@@ -464,24 +472,24 @@ def _puzzle_defaults():
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
-    dcs_all = ["Pardubice", "Lille", "Riga", "LaGomera"]
-    new_locs_all = ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]
+    dcs_all = ["Pardubice", "Calais", "Riga", "LaGomera"]
+    new_locs_all = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
 
-    dc_capacity = {"Pardubice": 45000, "Lille": 150000, "Riga": 75000, "LaGomera": 100000}
-    handling_dc = {"Pardubice": 4.768269231, "Lille": 5.675923077,
+    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
+    handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077,
                    "Riga": 4.426038462, "LaGomera": 7.0865}
     handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
 
     sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
     co2_prod_kg_per_unit = {"Taiwan": 6.3, "Shanghai": 9.8}
 
-    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Dublin": 46000,
+    new_loc_capacity = {"Budapest": 37000, "Prague": 35500, "Cork": 46000,
                         "Helsinki": 35000, "Warsaw": 26500}
-    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Dublin": 3.45e6,
+    new_loc_openingCost = {"Budapest": 2.775e6, "Prague": 2.6625e6, "Cork": 3.45e6,
                            "Helsinki": 2.625e6, "Warsaw": 1.9875e6}
-    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Dublin": 450000,
+    new_loc_operationCost = {"Budapest": 250000, "Prague": 305000, "Cork": 450000,
                              "Helsinki": 420000, "Warsaw": 412500}
-    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Dublin": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
+    new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Cork": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
 
     # Transport emission factor (ton CO2 per ton-km)
     co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
@@ -503,7 +511,7 @@ def _puzzle_defaults():
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna", "Gdansk", "Paris"],
-        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
     )
     dist2_new = pd.DataFrame(
         [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -511,15 +519,15 @@ def _puzzle_defaults():
          [1558.60889112091, 714.077816812742, 1949.83469918776, 2854.35402610261],
          [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
          [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
-        index=["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"],
-        columns=["Pardubice", "Lille", "Riga", "LaGomera"],
+        index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
+        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
     )
     dist3 = pd.DataFrame(
         [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice", "Lille", "Riga", "LaGomera"],
+        index=["Pardubice", "Calais", "Riga", "LaGomera"],
         columns=list(demand.keys()),
     )
 
@@ -876,15 +884,19 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
 
 
 def _render_puzzle_mode():
-    st.subheader("🧩 Puzzle Mode: Build a Network (No Optimization)")
+   
+   
+    st.subheader("🧩 Puzzle Mode: Build a Network ")
     st.markdown(
         "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
-        "We then **compute cost and CO₂ implications** using the same default data as the MASTER model."
+        "We then **compute cost and CO₂ implications** using the same default data."
     )
 
     cfg = _puzzle_defaults()
 
     # Scenario events (optional)
+    # Scenario events have been removed for simplicity
+    
     st.markdown("#### Scenario events")
     col_ev1, col_ev2 = st.columns(2)
     with col_ev1:
@@ -1000,13 +1012,71 @@ def _render_puzzle_mode():
     if st.button("Compute Implications", key="pz_run"):
         results, flows = _compute_puzzle_results(cfg, sel, scen)
 
+        # Persist the last run so users can submit after exploring the outputs.
+        st.session_state["pz_last_results"] = results
+        st.session_state["pz_last_flows"] = flows
+        st.session_state["pz_last_sel"] = sel
+        st.session_state["pz_last_scen"] = scen
+
         st.success("Computed! ✅")
 
+        # ------------------------------------------------------------
+        # Puzzle Mode Base Cases (for trade-off comparison)
+        # ------------------------------------------------------------
+        # Fixed reference solutions (from the shared screenshots):
+        #   - Min Cost base case: (Cost, CO₂)
+        #   - Min CO₂ base case: (Cost, CO₂)
+        MIN_COST_BASE_CASE_EUR = 12_770_125.95
+        MIN_COST_BASE_CASE_CO2_TON = 1_582.42
+
+        MIN_CO2_BASE_CASE_EUR = 15_584_560.46
+        MIN_CO2_BASE_CASE_CO2_TON = 727.91
+
+        def _pct_change(curr: float, base: float) -> float:
+            base = float(base)
+            if abs(base) < 1e-12:
+                return float("nan")
+            return (float(curr) - base) / base * 100.0
+
+        total_cost_val = float(results.get("Objective_value", 0.0))
+        total_co2_val = float(results.get("CO2_Total", 0.0))
+
+        # Current selection metrics
         c_cost, c_em = st.columns(2)
         with c_cost:
-            st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
+            st.metric("💰 Total Cost (€)", f"{total_cost_val:,.2f}")
         with c_em:
-            st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+            st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
+
+        # Base case values + percent-change comparisons (to show the trade-off)
+        st.markdown("#### 🔎 Base case comparison")
+        bc1, bc2 = st.columns(2)
+
+        with bc1:
+            st.markdown("**Min Cost base case**")
+            st.metric(
+                "Cost (€)",
+                f"{MIN_COST_BASE_CASE_EUR:,.2f}",
+                delta=f"Your cost: {_pct_change(total_cost_val, MIN_COST_BASE_CASE_EUR):+,.2f}%",
+            )
+            st.metric(
+                "CO₂ (tons)",
+                f"{MIN_COST_BASE_CASE_CO2_TON:,.2f}",
+                delta=f"Your CO₂: {_pct_change(total_co2_val, MIN_COST_BASE_CASE_CO2_TON):+,.2f}%",
+            )
+
+        with bc2:
+            st.markdown("**Min CO₂ base case**")
+            st.metric(
+                "Cost (€)",
+                f"{MIN_CO2_BASE_CASE_EUR:,.2f}",
+                delta=f"Your cost: {_pct_change(total_cost_val, MIN_CO2_BASE_CASE_EUR):+,.2f}%",
+            )
+            st.metric(
+                "CO₂ (tons)",
+                f"{MIN_CO2_BASE_CASE_CO2_TON:,.2f}",
+                delta=f"Your CO₂: {_pct_change(total_co2_val, MIN_CO2_BASE_CASE_CO2_TON):+,.2f}%",
+            )
 
         st.subheader("🌿 CO₂ Emissions")
         st.json({
@@ -1032,7 +1102,7 @@ def _render_puzzle_mode():
             ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
             ("Cross-dock", 48.208500, 16.372100, "Vienna"),
             ("DC", 50.040750, 15.776590, "Pardubice"),
-            ("DC", 50.629250, 3.057256, "Lille"),
+            ("DC", 50.954468, 1.862801, "Calais"),
             ("DC", 56.946285, 24.105078, "Riga"),
             ("DC", 28.116667, -17.216667, "LaGomera"),
             ("Retail", 50.935173, 6.953101, "Cologne"),
@@ -1052,7 +1122,7 @@ def _render_puzzle_mode():
         facility_coords = {
             "Budapest": (47.497913, 19.040236, "Budapest"),
             "Prague": (50.088040, 14.420760, "Prague"),
-            "Dublin": (53.350140, -6.266155, "Dublin"),
+            "Cork": (51.898514, -8.475604, "Cork"),
             "Helsinki": (60.169520, 24.935450, "Helsinki"),
             "Warsaw": (52.229770, 21.011780, "Warsaw"),
         }
@@ -1245,6 +1315,81 @@ def _render_puzzle_mode():
         # Cost + emission distributions (reuse existing renderer)
         render_cost_emission_distribution(results)
 
+    # ------------------------------------------------------------
+    # 📤 Puzzle submission (email + solution details -> SharePoint Excel)
+    # ------------------------------------------------------------
+    if "pz_last_results" in st.session_state:
+        st.markdown("---")
+        st.subheader("📤 Submit your solution")
+        st.caption(
+            "Only **@uzh.ch** email addresses are accepted. If the same email submits multiple times, "
+            "we keep only the **lowest-cost** submission in the Excel table (others are removed)."
+        )
+
+        if push_puzzle_submission is None:
+            st.warning(
+                "Submission is currently disabled because **post_data.py** is missing or misconfigured. "
+                "Puzzle Mode computations are unaffected."
+            )
+            return
+
+        with st.form("puzzle_submit_form", clear_on_submit=False):
+            email = st.text_input("UZH email (@uzh.ch)", value="", placeholder="name.surname@uzh.ch")
+            details = st.text_area(
+                "Solution details (how you built the network / your reasoning)",
+                value="",
+                height=160,
+                placeholder="Explain your decisions, constraints you targeted, trade-offs, etc.",
+            )
+            submitted = st.form_submit_button("Send to Excel")
+
+        if submitted:
+            email_clean = (email or "").strip().lower()
+            if not re.match(r"^[a-z0-9._%+\-]+@uzh\.ch$", email_clean):
+                st.error("Please enter a valid **@uzh.ch** email address.")
+                return
+
+            results = st.session_state["pz_last_results"]
+            flows = st.session_state.get("pz_last_flows", {})
+            sel_last = st.session_state.get("pz_last_sel", {})
+            scen_last = st.session_state.get("pz_last_scen", {})
+
+            payload = {
+                "email": email_clean,
+                "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
+                "cost_eur": float(results.get("Objective_value", 0.0)),
+                "co2_total_ton": float(results.get("CO2_Total", 0.0)),
+                "details": details,
+                "selection": sel_last,
+                "scenario": scen_last,
+                "flows": flows,
+                "results": {
+                    # keep the payload small-ish; the server can store JSON in a single cell
+                    "Objective_value": float(results.get("Objective_value", 0.0)),
+                    "CO2_Total": float(results.get("CO2_Total", 0.0)),
+                    "E_air": float(results.get("E_air", 0.0)),
+                    "E_sea": float(results.get("E_sea", 0.0)),
+                    "E_road": float(results.get("E_road", 0.0)),
+                    "E_lastmile": float(results.get("E_lastmile", 0.0)),
+                    "E_production": float(results.get("E_production", 0.0)),
+                },
+            }
+
+            try:
+                resp = push_puzzle_submission(
+                    email=email_clean,
+                    cost_eur=float(results.get("Objective_value", 0.0)),
+                    co2_total_ton=float(results.get("CO2_Total", 0.0)),
+                    details=details,
+                    payload=payload,
+                )
+                kept = None
+                if isinstance(resp, dict):
+                    kept = resp.get("kept") or resp.get("status")
+                st.success("Submitted ✅" + (f" (server: {kept})" if kept else ""))
+            except Exception as e:
+                st.error(f"Submission failed: {e}")
+
 
 # ------------------------------------------------------------
 # Mode selection (Normal vs Gamification vs Puzzle)
@@ -1252,7 +1397,7 @@ def _render_puzzle_mode():
 # Toggle Gamification Mode on/off via env var:
 #   ENABLE_GAMIFICATION=1 (default) -> shows Gamification Mode
 #   ENABLE_GAMIFICATION=0          -> hides Gamification Mode
-ENABLE_GAMIFICATION = os.getenv("ENABLE_GAMIFICATION", "1") == "0"
+ENABLE_GAMIFICATION = False
 
 mode_options = ["Normal Mode"]
 if ENABLE_GAMIFICATION:
@@ -1324,19 +1469,30 @@ else:
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
 
-# Expose sourcing-cost multiplier only for SC2F (and for Gamification Mode / MASTER).
-# For SC1F in Normal Mode, keep the old behavior (no multiplier UI).
-if (mode == "Gamification Mode") or ("SC2F" in model_choice):
-    sourcing_cost_multiplier = st.slider(
-        "Sourcing Cost Multiplier (Layer 1)",
-        min_value=0.5,
-        max_value=4.0,
-        value=1.0,
-        step=0.01,
-        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × multiplier.",
+# Expose sourcing-cost multiplier and EU carbon price only for SC2F in Normal Mode.
+# (Gamification Mode keeps MASTER defaults and does not expose these controls.)
+if (mode == "Normal Mode") and ("SC2F" in model_choice):
+    sourcing_cost_multiplier_pct = st.slider(
+        "Sourcing Cost Multiplier (Layer 1) (%)",
+        min_value=50,
+        max_value=400,
+        value=100,
+        step=1,
+        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × (multiplier% / 100).",
+    )
+    sourcing_cost_multiplier = float(sourcing_cost_multiplier_pct) / 100.0
+
+    # European carbon price parameter for SC2F (new facilities)
+    co2_cost_per_ton_New = st.number_input(
+        "European Carbon Price (€/ton CO₂)",
+        min_value=0.0,
+        value=60.0,
+        step=1.0,
+        help="Applies to manufacturing CO₂ cost for NEW (EU) facilities in SC2F.",
     )
 else:
     sourcing_cost_multiplier = 1.0
+    co2_cost_per_ton_New = 60.0
 
 scaled_sourcing_cost = {k: v * float(sourcing_cost_multiplier) for k, v in BASE_SOURCING_COST.items()}
 
@@ -1351,22 +1507,21 @@ if (mode == "Normal Mode") and ("SC1F" in model_choice):
         min_value=0.50,
         max_value=0.99,
         value=float(st.session_state["service_level"]),
-        step=0.01,
-        help="Used by SC1F and also passed to MASTER (Gamification) for inventory/safety stock logic.",
+        step=0.01
     )
 
 # Always use the persisted value everywhere (including MASTER run)
 service_level = float(st.session_state["service_level"])
 
 
-# CO₂ prices are fixed to default values (not user-editable)
+# CO₂ price for existing plants is fixed to default value (not user-editable here)
 co2_cost_per_ton = 37.5
-co2_cost_per_ton_New = 60.0
+
 # ------------------------------------------------------------
 # RUN OPTIMIZATION
 # ------------------------------------------------------------
 if st.button("Run Optimization"):
-    with st.spinner("⚙ Optimizing with Gurobi..."):
+    with st.spinner("⚙ Optimizing ..."):
         try:
             # 1) Choose which model to run
             
@@ -1540,7 +1695,7 @@ if st.button("Run Optimization"):
                 ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
                 ("Cross-dock", 48.208500, 16.372100, "Vienna"),
                 ("DC", 50.040750, 15.776590, "Pardubice"),
-                ("DC", 50.629250, 3.057256, "Lille"),
+                ("DC", 50.629250, 3.057256, "Calais"),
                 ("DC", 56.946285, 24.105078, "Riga"),
                 ("DC", 28.116667, -17.216667, "LaGomera"),
                 ("Retail", 50.935173, 6.953101, "Cologne"),
@@ -1563,7 +1718,7 @@ if st.button("Run Optimization"):
             facility_coords = {
                 "Budapest": (47.497913, 19.040236, "Budapest"),
                 "Prague": (50.088040, 14.420760, "Prague"),
-                "Dublin": (53.350140, -6.266155, "Dublin"),
+                "Cork": (51.898514, -8.475604, "Cork"),
                 "Helsinki": (60.169520, 24.935450, "Helsinki"),
                 "Warsaw": (52.229770, 21.011780, "Warsaw"),
             }
@@ -1717,7 +1872,7 @@ if st.button("Run Optimization"):
                 prod_sources[plant] = total
             
             # New EU facilities
-            for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+            for fac in ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]:
                 total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                 prod_sources[fac] = total
             
@@ -1902,7 +2057,7 @@ if st.button("Run Optimization"):
                     ("Cross-dock", 50.11, 8.68, "Gdansk"),
                     ("Cross-dock", 37.98, 23.73, "Vienna"),
                     ("DC", 47.50, 19.04, "Pardubice"),
-                    ("DC", 48.14, 11.58, "Lille"),
+                    ("DC", 48.14, 11.58, "Calais"),
                     ("DC", 46.95, 7.44, "Riga"),
                     ("DC", 45.46, 9.19, "LaGomera"),
                     ("Retail", 55.67, 12.57, "Cologne"),
@@ -1918,7 +2073,7 @@ if st.button("Run Optimization"):
                     facility_coords = {
                         "Budapest": (49.61, 6.13, "Budapest"),
                         "Prague": (44.83, 20.42, "Prague"),
-                        "Dublin": (47.09, 16.37, "Dublin"),
+                        "Cork": (51.90, -8.47, "Cork"),
                         "Helsinki": (50.45, 14.50, "Helsinki"),
                         "Warsaw": (42.70, 12.65, "Warsaw"),
                     }
@@ -2028,7 +2183,7 @@ if st.button("Run Optimization"):
                         prod_sources[plant] = total
 
                     # New EU facilities
-                    for fac in ["Budapest", "Prague", "Dublin", "Helsinki", "Warsaw"]:
+                    for fac in ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]:
                         total = sum(v.X for v in f2_2_vars if v.VarName.startswith(f"f2_2[{fac},"))
                         prod_sources[fac] = total
 
