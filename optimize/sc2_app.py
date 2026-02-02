@@ -648,7 +648,7 @@ def run_sc2():
     
         for col in flow_cols:
             # Extract mode from inside brackets, e.g. f2_2[CZMC,DEBER,road]
-            match = re.waterrch(r",\s*([a-zA-Z]+)\]$", col)
+            match = re.search(r",\s*([a-zA-Z]+)\]$", col)
             if match:
                 mode = match.group(1).lower()
                 if mode in totals:
