@@ -889,7 +889,7 @@ def _render_puzzle_mode():
     st.subheader("🧩 Puzzle Mode: Build a Network ")
     st.markdown(
         "In this mode, **you make the choices** (facility activation, production splits, and mode shares). "
-        "We then **compute cost and CO₂ implications** using the same default data as the MASTER model."
+        "We then **compute cost and CO₂ implications** using the same default data."
     )
 
     cfg = _puzzle_defaults()
@@ -1507,8 +1507,7 @@ if (mode == "Normal Mode") and ("SC1F" in model_choice):
         min_value=0.50,
         max_value=0.99,
         value=float(st.session_state["service_level"]),
-        step=0.01,
-        help="Used by SC1F and also passed to MASTER (Gamification) for inventory/safety stock logic.",
+        step=0.01
     )
 
 # Always use the persisted value everywhere (including MASTER run)
@@ -2025,7 +2024,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 📦 MAXIMUM SATISFIABLE DEMAND
                     # ===================================================
-                    st.markdown("## 📦 Maximum Satisfiable Demand (Fallback Model)")
+                    st.markdown("## 📦 Maximum Satisfiable Demand ")
 
                     st.metric(
                         "Satisfied Demand (%)",
@@ -2040,7 +2039,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 💰 OBJECTIVE
                     # ===================================================
-                    st.markdown("## 💰 Objective Value (Excluding Slack Penalty)")
+                    st.markdown("## 💰 Objective Value ")
                     st.metric(
                         "Objective (€)",
                         f"{results_uns['Objective_value']:,.2f}"
@@ -2049,7 +2048,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🌍 MAP
                     # ===================================================
-                    st.markdown("## 🌍 Global Supply Chain Map (Fallback Model)")
+                    st.markdown("## 🌍 Global Supply Chain Map ")
 
                     nodes = [
                     ("Plant", 31.23, 121.47, "Shanghai"),
@@ -2143,7 +2142,7 @@ if st.button("Run Optimization"):
                         color_discrete_map=color_map,
                         projection="natural earth",
                         scope="world",
-                        title="Global Supply Chain Structure (Fallback Model)",
+                        title="Global Supply Chain Structure ",
                     )
 
                     for trace in fig_map.data:
@@ -2171,7 +2170,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🏭 PRODUCTION OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
+                    st.markdown("## 🏭 Production Outbound Breakdown ")
 
                     f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
                     f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
@@ -2202,7 +2201,7 @@ if st.button("Run Optimization"):
                         names="Source",
                         values="Units Produced",
                         hole=0.3,
-                        title="Production Share by Source (Fallback Model)",
+                        title="Production Share by Source ",
                     )
 
                     fig_prod.update_traces(
@@ -2216,7 +2215,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🚚 CROSS-DOCK OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
+                    st.markdown("## 🚚 Cross-dock Outbound Breakdown ")
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
@@ -2244,7 +2243,7 @@ if st.button("Run Optimization"):
                             names="Crossdock",
                             values="Shipped (units)",
                             hole=0.3,
-                            title="Cross-dock Outbound Share (Fallback Model)",
+                            title="Cross-dock Outbound Share ",
                         )
 
                         st.plotly_chart(fig_crossdock, use_container_width=True)
