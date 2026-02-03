@@ -628,27 +628,40 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     fulfill_pct = 1.0  # Demand fulfillment slider removed; assume 100%
     total_units = total_demand * max(0.0, min(1.0, fulfill_pct))
 
-    # Production split Layer1 vs Layer2
-    share_L1_total = float(sel.get("share_L1_total", 1.0))
-    share_L1_total = max(0.0, min(1.0, share_L1_total))
-    share_L2_total = 1.0 - share_L1_total
+    # Production split across production facilities
+    prod_source_shares = sel.get("prod_source_shares", None)
 
-    prod_L1_total = total_units * share_L1_total
-    prod_L2_total = total_units * share_L2_total
+    if isinstance(prod_source_shares, dict) and len(prod_source_shares) > 0:
+        # New Puzzle UI: user allocates a single share vector across ALL active production sites.
+        active_sources = list(plants) + list(new_locs)
+        shares = {k: float(prod_source_shares.get(k, 0.0)) for k in active_sources}
+        shares = _normalize_shares(shares)
 
-    # Per-site shares
-    plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
-    plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
-    plant_shares = _normalize_shares(plant_shares)
+        prod_by_source = {k: total_units * shares.get(k, 0.0) for k in active_sources}
+        plant_prod = {p: prod_by_source.get(p, 0.0) for p in plants}
+        new_prod = {n: prod_by_source.get(n, 0.0) for n in new_locs}
 
-    new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
-    if new_locs:
-        new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
-        new_shares = _normalize_shares(new_shares)
+    else:
+        # Backward-compatible: old UI (Layer 1 share + separate normalization per layer)
+        share_L1_total = float(sel.get("share_L1_total", 1.0))
+        share_L1_total = max(0.0, min(1.0, share_L1_total))
+        share_L2_total = 1.0 - share_L1_total
 
-    plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
-    new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
+        prod_L1_total = total_units * share_L1_total
+        prod_L2_total = total_units * share_L2_total
 
+        # Per-site shares
+        plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
+        plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
+        plant_shares = _normalize_shares(plant_shares)
+
+        new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
+        if new_locs:
+            new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
+            new_shares = _normalize_shares(new_shares)
+
+        plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
+        new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
     # Mode shares (apply scenario blocks)
     l1_mode_share_by_plant = sel.get("l1_mode_share_by_plant", {})
     l2_mode_share_by_origin = sel.get("l2_mode_share_by_origin", {})
@@ -937,123 +950,96 @@ def _render_puzzle_mode():
     st.info(f"Total demand (units): **{total_demand:,}**")
 
     st.markdown("#### Production split")
-    share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
-
-    st.caption("Layer 1: split across selected plants (we normalize automatically)")
-    plant_shares_raw = {}
-    for p in (plants or cfg["plants_all"]):
-        plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
-
-    if new_locs:
-        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
-        new_shares_raw = {}
-        for n in new_locs:
-            new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
-    else:
-        new_shares_raw = {}
-
-    st.markdown("#### Transport mode shares")
     st.caption(
-        "Defaults: L1 Water=50% (Air remainder), "
-        "L2 Water=50% & Air=50% (Road remainder), "
-        "L3 Water=50% & Air=25% (Road remainder). "
-        "Shares are set in **percent (%).**"
+        "Set production shares across **all selected production facilities**. "
+        "The total is forced to **100%** (the last facility is auto-completed)."
     )
 
-    # ------------------------------------------------------------
-    # UI helper: show a *non-editable* slider for computed / fixed shares.
-    # IMPORTANT: Streamlit persists widget state by `key`, so a disabled slider can
-    # otherwise display a stale value. We therefore force session_state[key] each rerun.
-    # ------------------------------------------------------------
-    def _fixed_slider(label: str, value_pct: int, key: str):
-        value_pct = int(max(0, min(100, value_pct)))
-        try:
-            st.session_state[key] = value_pct
-            st.slider(label, 0, 100, value_pct, 1, key=key, disabled=True)
-        except TypeError:
-            # Older Streamlit versions may not support `disabled=` on sliders.
-            st.markdown(f"{label}: **{value_pct}%** (fixed)")
+    # Production sources = Layer 1 plants + selected new production facilities (Layer 2)
+    prod_sources = list(plants or cfg["plants_all"]) + list(new_locs)
+    if len(prod_sources) == 0:
+        prod_sources = list(cfg["plants_all"])
+
+    prod_share_pct_by_source = {}
+    remaining_pct = 100
+
+    # Editable sliders for first N-1 sources (bounded by remaining), last one is fixed remainder.
+    for i, src in enumerate(prod_sources):
+        if i < len(prod_sources) - 1:
+            k = f"pz_prod_share_pct_{src}"
+            # default: equal split
+            if k not in st.session_state:
+                st.session_state[k] = int(round(100 / max(len(prod_sources), 1)))
+
+            # clamp to current remaining to avoid Streamlit 'value out of range' errors
+            st.session_state[k] = int(max(0, min(int(st.session_state[k]), int(remaining_pct))))
+
+            pct = st.slider(
+                f"{src} share (%)",
+                min_value=0,
+                max_value=int(remaining_pct),
+                value=int(st.session_state[k]),
+                step=1,
+                key=k,
+            )
+            prod_share_pct_by_source[src] = int(pct)
+            remaining_pct -= int(pct)
+        else:
+            # Auto-complete the last one to reach 100%
+            pct = int(max(0, min(100, remaining_pct)))
+            _fixed_slider(f"{src} share (%)", pct, key=f"pz_prod_share_pct_fixed_{src}")
+            prod_share_pct_by_source[src] = int(pct)
+
+    # Summary: show a 'total bar' at the bottom
+    auto_pct = int(prod_share_pct_by_source.get(prod_sources[-1], 0))
+    manual_pct = 100 - auto_pct
+    st.caption(f"Manual sliders total: **{manual_pct}%**  •  Auto remainder: **{auto_pct}%**")
+    st.progress(min(max(manual_pct / 100.0, 0.0), 1.0))
+    _fixed_slider("Total share (%)", 100, key="pz_prod_total_fixed")
+
+    # Convert to fractions for the solver-free puzzle computation
+    prod_source_shares = {k: float(v) / 100.0 for k, v in prod_share_pct_by_source.items()}
+    st.markdown("#### Transport mode shares")
+    st.caption("Defaults: L1 Water=50% (air remainder), L2 Water=50% & air=50% (road remainder), L3 Water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
     st.markdown("**Layer 1 (Plant → Cross-dock)**")
     l1_mode_share_by_plant = {}
-    for p_ in (plants or cfg["plants_all"]):
-        # L1 has only Air + Water. Users edit Water; Air is implied as 100 - Water.
-        # Scenario flags can force a mode.
-        if scen.get("suez_canal", False):
-            Water_pct = 0
-            _fixed_slider(f"{p_} – Water share (L1) (%)", Water_pct, key=f"pz_l1_Water_fixed_{p_}")
-        elif scen.get("volcano", False):
-            Water_pct = 100
-            _fixed_slider(f"{p_} – Water share (L1) (%)", Water_pct, key=f"pz_l1_Water_fixed_{p_}")
-        else:
-            Water_pct = st.slider(
-                f"{p_} – Water share (L1) (%)",
-                0, 100, 50, 1,
-                key=f"pz_l1_Water_{p_}",
-            )
-
-        air_pct = 100 - int(Water_pct)
-        _fixed_slider(f"{p_} – Air share (L1) (%)", air_pct, key=f"pz_l1_air_fixed_{p_}")
-
+    for p in (plants or cfg["plants_all"]):
+        Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
         Water = float(Water_pct) / 100.0
-        l1_mode_share_by_plant[p_] = {"Water": float(Water)}
-
-    st.caption("Note: Road is not available in Layer 1 (Plant → Cross-dock).")
+        l1_mode_share_by_plant[p] = {"Water": float(Water)}
 
     st.markdown("**Layer 2 (Cross-dock / New → DC)**")
     l2_mode_share_by_origin = {}
-    for o_ in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
-        with st.expander(f"{o_}", expanded=False):
-            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o_}")
+    for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
+        with st.expander(f"{o}", expanded=False):
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o}")
             rem_pct = 100 - int(Water_pct)
-
-            # Air can be forced off by Volcano or by Water=100 (no remainder).
-            air_fixed = scen.get("volcano", False) or (rem_pct <= 0)
-            if air_fixed:
+            if rem_pct <= 0:
                 air_pct = 0
-                _fixed_slider("Air share (%)", 0, key=f"pz_l2_air_fixed_{o_}")
+                st.write("Air share (%): **0%** (fixed because Water is 100%)")
             else:
                 air_default_pct = min(50, rem_pct)
-                air_pct = st.slider(
-                    "Air share (%)",
-                    0, int(rem_pct), int(air_default_pct), 1,
-                    key=f"pz_l2_air_{o_}",
-                )
-
-            # Road is always the remainder in L2.
-            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
-            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l2_road_fixed_{o_}")
-
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l2_mode_share_by_origin[o_] = {"Water": float(Water), "air": float(air)}
+            l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
     st.markdown("**Layer 3 (DC → Retailer)**")
     l3_mode_share_by_dc = {}
-    for d_ in (dcs or cfg["dcs_all"]):
-        with st.expander(f"{d_}", expanded=False):
-            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d_}")
+    for d in (dcs or cfg["dcs_all"]):
+        with st.expander(f"{d}", expanded=False):
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d}")
             rem_pct = 100 - int(Water_pct)
-
-            air_fixed = scen.get("volcano", False) or (rem_pct <= 0)
-            if air_fixed:
+            if rem_pct <= 0:
                 air_pct = 0
-                _fixed_slider("Air share (%)", 0, key=f"pz_l3_air_fixed_{d_}")
+                st.write("Air share (%): **0%** (fixed because Water is 100%)")
             else:
                 air_default_pct = min(25, rem_pct)
-                air_pct = st.slider(
-                    "Air share (%)",
-                    0, int(rem_pct), int(air_default_pct), 1,
-                    key=f"pz_l3_air_{d_}",
-                )
-
-            # Road is always the remainder in L3.
-            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
-            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l3_road_fixed_{d_}")
-
+                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l3_mode_share_by_dc[d_] = {"Water": float(Water), "air": float(air)}
+            l3_mode_share_by_dc[d] = {"Water": float(Water), "air": float(air)}
     # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
     # Demand fulfillment slider was removed; we assume 100% fulfillment in computations.
     sel = {
@@ -1061,9 +1047,7 @@ def _render_puzzle_mode():
         "crossdocks": crossdocks,
         "dcs": dcs,
         "new_locs": new_locs,
-        "share_L1_total": share_L1,
-        "plant_shares": plant_shares_raw,
-        "new_shares": new_shares_raw,
+        "prod_source_shares": prod_source_shares,
         "l1_mode_share_by_plant": l1_mode_share_by_plant,
         "l2_mode_share_by_origin": l2_mode_share_by_origin,
         "l3_mode_share_by_dc": l3_mode_share_by_dc,
