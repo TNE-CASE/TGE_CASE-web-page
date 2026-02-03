@@ -80,12 +80,12 @@ def _on_optimization_change():
     st.session_state["factory_radio"] = None
 
 # Collapsible "Factory Model" group
-with st.sidebar.expander("🧭 Scenario Dashboards", expanded=True):
+with st.sidebar.expander("🏭 Factory Model", expanded=True):
     factory_choice = st.radio(
         "Select model:",
         [
-            "Scenario 1 – Existing Network (Speed vs Emissions)",
-            "Scenario 2 – Local Sourcing (New Facilities)"
+            "SC1 – Existing Facilities",
+            "SC2 – New Facilities"
         ],
         index=None,
         key="factory_radio",
@@ -105,11 +105,11 @@ with st.sidebar.expander("📊 Optimization", expanded=True):
 # ================================================================
 # ROUTING LOGIC
 # ================================================================
-if factory_choice == "Scenario 1 – Existing Network (Speed vs Emissions)":
+if factory_choice == "SC1 – Existing Facilities":
     run_sc1()
     st.stop()
 
-elif factory_choice == "Scenario 2 – Local Sourcing (New Facilities)":
+elif factory_choice == "SC2 – New Facilities":
     run_sc2()
     st.stop()
 
@@ -124,7 +124,7 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Supply Chain Decision Support Dashboard")
+st.title("🌍 Global Supply Chain Optimization ")
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
@@ -199,7 +199,7 @@ EPS = 1e-6
 # IMPORTANT: Map displayed City labels -> model facility keys used in variable names
 # Adjust these to match YOUR model naming.
 CITY_TO_KEYS = {
-    # Manufacturers (model keys)
+    # Plants (model keys)
     "Shanghai": ["Shanghai"],
     "Taiwan": ["Taiwan"],  
 
@@ -276,13 +276,7 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """
-    Sum units moved by transportation mode for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3'.
-
-    Notes:
-      - Variable names encode the mode in the last bracket position (e.g., ...,'air'/'water'/'road').
-      - We treat both 'water' and legacy 'sea' tokens as Water for display consistency.
-    """
+    """Sum air/Water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
     totals = {"air": 0.0, "Water": 0.0, "road": 0.0}
     if model is None:
         return totals
@@ -294,17 +288,9 @@ def sum_flows_by_mode_model(model, prefix: str):
         parts = _parse_inside_brackets(n)
         if not parts or len(parts) < 3:
             continue
-
-        mode_raw = str(parts[-1]).strip().lower()
-        if mode_raw in ("water", "sea"):
-            mode_key = "Water"
-        elif mode_raw in ("air", "road"):
-            mode_key = mode_raw
-        else:
-            # Unknown token — ignore to keep UI robust
-            continue
-
-        totals[mode_key] += float(getattr(v, "X", 0.0) or 0.0)
+        mode = str(parts[-1]).lower()
+        if mode in totals:
+            totals[mode] += _safe_float(getattr(v, "X", 0.0))
 
     return totals
 
@@ -325,7 +311,7 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
 
 def render_transport_flows_by_mode(model):
     st.markdown("## 🚚 Transport Flows by Mode")
-    display_layer_summary_model(model, "Layer 1: Manufacturers → Cross-docks", "f1", include_road=False)
+    display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
     display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
     display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
     display_layer_summary_model(model, "Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
@@ -734,7 +720,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         "L3": {"air": 0.0, "Water": 0.0, "road": 0.0},
     }
 
-    # --- Layer 1: Manufacturers -> Crossdocks (equal split over crossdocks)
+    # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
     transport_L1 = 0.0
     inv_L1 = 0.0
     sourcing_L1 = 0.0
@@ -935,7 +921,7 @@ def _render_puzzle_mode():
     st.markdown("#### Facility selection")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.caption("Layer 1 Manufacturers")
+        st.caption("Layer 1 Plants")
         plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
     with col2:
         st.caption("Cross-docks")
@@ -969,12 +955,46 @@ def _render_puzzle_mode():
     st.markdown("#### Transport mode shares")
     st.caption("Defaults: L1 Water=50% (air remainder), L2 Water=50% & air=50% (road remainder), L3 Water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
+    # ------------------------------------------------------------
+    # UI helper: show a *non-editable* slider for computed / fixed shares.
+    # Some layers have modes that are implied (e.g., Road = 100 - Water - Air).
+    # We still visualize those shares so users don't feel like something is "missing".
+    # ------------------------------------------------------------
+    def _fixed_slider(label: str, value_pct: int, key: str):
+        """Render a disabled slider if supported; otherwise fall back to a metric-style display."""
+        value_pct = int(max(0, min(100, value_pct)))
+        try:
+            st.slider(label, 0, 100, value_pct, 1, key=key, disabled=True)
+        except TypeError:
+            # Older Streamlit versions may not support `disabled=` on sliders.
+            st.markdown(f"{label}: **{value_pct}%** (fixed)")
+
     st.markdown("**Layer 1 (Plant → Cross-dock)**")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
-        Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
+        # L1 has only Air + Water. We let users edit one slider (Water),
+        # and *visualize* the implied Air share as a fixed slider.
+        # If a scenario forces a mode, we lock the slider as well.
+        if scen.get("suez_canal", False):
+            Water_pct = 0
+            _fixed_slider(f"{p} – Water share (L1) (%)", Water_pct, key=f"pz_l1_Water_fixed_{p}")
+        elif scen.get("volcano", False):
+            Water_pct = 100
+            _fixed_slider(f"{p} – Water share (L1) (%)", Water_pct, key=f"pz_l1_Water_fixed_{p}")
+        else:
+            Water_pct = st.slider(
+                f"{p} – Water share (L1) (%)",
+                0, 100, 50, 1,
+                key=f"pz_l1_Water_{p}"
+            )
+
+        air_pct = 100 - int(Water_pct)
+        _fixed_slider(f"{p} – Air share (L1) (%)", air_pct, key=f"pz_l1_air_fixed_{p}")
+
         Water = float(Water_pct) / 100.0
         l1_mode_share_by_plant[p] = {"Water": float(Water)}
+
+    st.caption("Note: Road is not available in Layer 1 (Plant → Cross-dock).")
 
     st.markdown("**Layer 2 (Cross-dock / New → DC)**")
     l2_mode_share_by_origin = {}
@@ -982,28 +1002,50 @@ def _render_puzzle_mode():
         with st.expander(f"{o}", expanded=False):
             Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o}")
             rem_pct = 100 - int(Water_pct)
-            if rem_pct <= 0:
+
+            # Air may be forced off by a scenario (Volcanic Eruption), or by Water=100.
+            air_fixed = scen.get("volcano", False) or (rem_pct <= 0)
+            if air_fixed:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Water is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l2_air_fixed_{o}")
             else:
                 air_default_pct = min(50, rem_pct)
-                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
+                air_pct = st.slider(
+                    "Air share (%)",
+                    0, int(rem_pct), int(air_default_pct), 1,
+                    key=f"pz_l2_air_{o}"
+                )
+
+            # Road is always the remainder in L2; show it as a fixed slider.
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l2_road_fixed_{o}")
+
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
-    st.markdown("**Layer 3 (DC → Retailer hubs)**")
+    st.markdown("**Layer 3 (DC → Retailer)**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
             Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d}")
             rem_pct = 100 - int(Water_pct)
-            if rem_pct <= 0:
+
+            air_fixed = scen.get("volcano", False) or (rem_pct <= 0)
+            if air_fixed:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Water is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l3_air_fixed_{d}")
             else:
                 air_default_pct = min(25, rem_pct)
-                air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
+                air_pct = st.slider(
+                    "Air share (%)",
+                    0, int(rem_pct), int(air_default_pct), 1,
+                    key=f"pz_l3_air_{d}"
+                )
+
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l3_road_fixed_{d}")
+
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
             l3_mode_share_by_dc[d] = {"Water": float(Water), "air": float(air)}
@@ -1060,7 +1102,7 @@ def _render_puzzle_mode():
         with c_cost:
             st.metric("💰 Total Cost (€)", f"{total_cost_val:,.2f}")
         with c_em:
-            st.metric("🌿 Total Emissions (tons CO₂)", f"{total_co2_val:,.2f}")
+            st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
 
         # Base case values + percent-change comparisons (to show the trade-off)
         st.markdown("#### 🔎 Base case comparison")
@@ -1406,14 +1448,14 @@ def _render_puzzle_mode():
 
 
 # ------------------------------------------------------------
-# Mode selection (Optimization vs Gamification vs Puzzle)
+# Mode selection (Normal vs Gamification vs Puzzle)
 # ------------------------------------------------------------
 # Toggle Gamification Mode on/off via env var:
 #   ENABLE_GAMIFICATION=1 (default) -> shows Gamification Mode
 #   ENABLE_GAMIFICATION=0          -> hides Gamification Mode
 ENABLE_GAMIFICATION = False
 
-mode_options = ["Optimization Mode"]
+mode_options = ["Normal Mode"]
 if ENABLE_GAMIFICATION:
     mode_options.append("Gamification Mode")
 mode_options.append("Puzzle Mode")
@@ -1461,7 +1503,7 @@ if mode == "Gamification Mode":
     gm_modes_L2 = gm_ctx["gm_modes_L2"]
     gm_modes_L3 = gm_ctx["gm_modes_L3"]
 
-# For Optimization Mode we keep the default flags (all False, tariff 1.0)
+# For Normal Mode we keep the default flags (all False, tariff 1.0)
 
 # ------------------------------------------------------------
 # Parameter Inputs
@@ -1473,29 +1515,26 @@ co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 # In Gamification Mode we always run the parametric MASTER model.
 # Model selection has no effect there, so we hide the selector.
 if mode == "Gamification Mode":
-    model_choice = "SC2F – Scenario 2: Local Sourcing (New Facilities)"
+    model_choice = "SC2F – Allow New Facilities"
 else:
     model_choice = st.selectbox(
-        "Optimization model (scenario):",
-        ["SC1F – Scenario 1: Existing Network", "SC2F – Scenario 2: Local Sourcing (New Facilities)"]
+        "Optimization model:",
+        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
     )
 
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
 
-# Expose sourcing-cost surcharge and EU carbon price only for Scenario 2 in Optimization Mode.
+# Expose sourcing-cost multiplier and EU carbon price only for SC2F in Normal Mode.
 # (Gamification Mode keeps MASTER defaults and does not expose these controls.)
-if (mode == "Optimization Mode") and ("SC2F" in model_choice):
-    # Scenario 2 stress test knob (tariff / Asian sourcing cost shock)
-    # We call this control "Sourcing Cost Surcharge" in the case materials.
-    # 100% = baseline; 300% = 3× Asian sourcing costs.
+if (mode == "Normal Mode") and ("SC2F" in model_choice):
     sourcing_cost_multiplier_pct = st.slider(
-        "Sourcing Cost Surcharge (Asian manufacturers, Layer 1) (%)",
-        min_value=100,
-        max_value=300,
+        "Sourcing Cost Multiplier (Layer 1) (%)",
+        min_value=50,
+        max_value=400,
         value=100,
-        step=50,
-        help="Scales Layer 1 sourcing costs for Asian manufacturers (Taiwan, Shanghai): effective_cost = base_cost × (surcharge% / 100).",
+        step=1,
+        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × (multiplier% / 100).",
     )
     sourcing_cost_multiplier = float(sourcing_cost_multiplier_pct) / 100.0
 
@@ -1517,8 +1556,8 @@ if "service_level" not in st.session_state:
     st.session_state["service_level"] = 0.90
 
 
-# Only let user edit it in Optimization Mode + SC1F (your requirement)
-if (mode == "Optimization Mode") and ("SC1F" in model_choice):
+# Only let user edit it in Normal Mode + SC1F (your requirement)
+if (mode == "Normal Mode") and ("SC1F" in model_choice):
     st.session_state["service_level"] = st.slider(
         "Service Level",
         min_value=0.50,
@@ -1583,8 +1622,8 @@ if st.button("Run Optimization"):
                 # Benchmarking
                 # ------------------------------------------------------------
                 try:
-                    # Always benchmark against Scenario 2 optimal (new facilities)
-                    benchmark_label = "Scenario 2 Optimal (New Facilities)"
+                    # Always benchmark against SC2F optimal (Allow New Facilities)
+                    benchmark_label = "SC2F Optimal (Allow New Facilities)"
                 
                     # Use the same CO₂ price the user entered
                     # - SC1F seçiliyse: co2_cost_per_ton var
@@ -1657,7 +1696,7 @@ if st.button("Run Optimization"):
             with c_cost:
                 st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
             with c_em:
-                st.metric("🌿 Total Emissions (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+                st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
 
             # ------------------------------------------------------------
             # Show gap vs optimal (only in Gamification Mode)
