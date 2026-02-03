@@ -1025,6 +1025,11 @@ def _render_puzzle_mode():
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
         Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
+
+        # Auto remainder (non-editable): Air = 100% - Water
+        air_pct = 100 - int(Water_pct)
+        _fixed_slider(f"{p} – Air share (L1) (%)", air_pct, key=f"pz_l1_air_fixed_{p}")
+
         Water = float(Water_pct) / 100.0
         l1_mode_share_by_plant[p] = {"Water": float(Water)}
 
@@ -1034,12 +1039,19 @@ def _render_puzzle_mode():
         with st.expander(f"{o}", expanded=False):
             Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o}")
             rem_pct = 100 - int(Water_pct)
+
+            # Editable within remainder
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Water is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l2_air_fixed_{o}")
             else:
                 air_default_pct = min(50, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
+
+            # Auto remainder (non-editable): Road = 100% - Water - Air
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l2_road_fixed_{o}")
+
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
@@ -1050,12 +1062,19 @@ def _render_puzzle_mode():
         with st.expander(f"{d}", expanded=False):
             Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d}")
             rem_pct = 100 - int(Water_pct)
+
+            # Editable within remainder
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Water is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l3_air_fixed_{d}")
             else:
                 air_default_pct = min(25, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
+
+            # Auto remainder (non-editable): Road = 100% - Water - Air
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l3_road_fixed_{d}")
+
             Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
             l3_mode_share_by_dc[d] = {"Water": float(Water), "air": float(air)}
