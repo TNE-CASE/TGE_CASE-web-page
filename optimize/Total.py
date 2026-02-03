@@ -949,6 +949,25 @@ def _render_puzzle_mode():
     total_demand = int(sum(cfg["demand"].values()))
     st.info(f"Total demand (units): **{total_demand:,}**")
 
+
+    # ------------------------------------------------------------
+    # UI helper: non-editable slider for computed/fixed percentages
+    # ------------------------------------------------------------
+    def _fixed_slider(label: str, value_pct: int, key: str):
+        """Render a disabled slider (if supported) and force its value to follow `value_pct`.
+
+        Streamlit widgets with a `key` keep their state across reruns. For computed values
+        (like remainders), we must overwrite `st.session_state[key]` on every rerun, otherwise
+        the widget may display a stale cached value.
+        """
+        value_pct = int(max(0, min(100, value_pct)))
+        st.session_state[key] = value_pct
+        try:
+            st.slider(label, 0, 100, value_pct, 1, key=key, disabled=True)
+        except TypeError:
+            # Older Streamlit versions may not support `disabled=` on sliders.
+            st.markdown(f"{label}: **{value_pct}%** (fixed)")
+
     st.markdown("#### Production split")
     st.caption(
         "Set production shares across **all selected production facilities**. "
@@ -2306,6 +2325,5 @@ if st.button("Run Optimization"):
 
                 except Exception as e2:
                     st.error(f"❌ Fallback model also failed: {e2}")
-
 
 
