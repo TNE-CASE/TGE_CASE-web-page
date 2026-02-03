@@ -127,6 +127,137 @@ def render_gamification_mode() -> Dict[str, Any]:
     # Map selections -> MASTER boolean flags (isBudapest, isPrague, ...)
     gm_newloc_flag_kwargs = {f"is{code}": (code in gm_active_new_locs) for code in new_locs_all}
 
+
+    # ---------------------------
+    # Production allocation check (Layer 1)
+    # ---------------------------
+    st.markdown("#### Production allocation check (Layer 1)")
+    st.caption(
+        "Assign how much of total demand is produced by each active plant. "
+        "If the total is below 100%, demand cannot be met (even if downstream transport is available)."
+    )
+
+    # Demand baseline (aligned with MASTER / Puzzle defaults in Total.py)
+    demand_by_retailer = {
+        "Cologne": 17000,
+        "Antwerp": 9000,
+        "Krakow": 13000,
+        "Kaunas": 19000,
+        "Oslo": 15000,
+        "Dublin": 20000,
+        "Stockholm": 18000,
+    }
+    gm_demand_units = int(sum(demand_by_retailer.values()))
+
+    gm_production_share_by_plant: Dict[str, float] = {}
+    gm_production_capacity_by_plant: Dict[str, float] = {}
+    gm_total_allocated_units = 0.0
+    gm_total_produced_units = 0.0
+
+    if len(gm_active_plants) == 0:
+        st.error("No active plants selected → total production is 0 → demand is not satisfied.")
+        gm_unmet_demand_units = float(gm_demand_units)
+    else:
+        # Default shares: equal split across active plants (last one takes remainder to reach 100)
+        n_pl = len(gm_active_plants)
+        base = 100 // max(n_pl, 1)
+        remainder = 100 - base * max(n_pl - 1, 0)
+
+        cols = st.columns(n_pl)
+        rows = []
+
+        for i, (col, plant) in enumerate(zip(cols, gm_active_plants)):
+            with col:
+                st.caption(plant)
+
+                pct_key = f"gm_prod_{plant}_pct"
+                cap_key = f"gm_cap_{plant}_units"
+
+                if pct_key not in st.session_state:
+                    st.session_state[pct_key] = int(remainder if (i == n_pl - 1) else base)
+
+                if cap_key not in st.session_state:
+                    # Default capacity: at least total demand (so it doesn't bind unless user wants it)
+                    st.session_state[cap_key] = int(gm_demand_units)
+
+                prod_pct = st.slider(
+                    "Production share (%)",
+                    min_value=0,
+                    max_value=100,
+                    value=int(st.session_state[pct_key]),
+                    step=1,
+                    key=pct_key,
+                )
+
+                cap_units = st.number_input(
+                    "Capacity (units)",
+                    min_value=0,
+                    value=int(st.session_state[cap_key]),
+                    step=1000,
+                    key=cap_key,
+                    help="Used only for the production-feasibility check in Gamification Mode (UI).",
+                )
+
+            share = float(prod_pct) / 100.0
+            alloc_units = share * float(gm_demand_units)
+            prod_units = min(float(alloc_units), float(cap_units))
+
+            gm_production_share_by_plant[plant] = float(share)
+            gm_production_capacity_by_plant[plant] = float(cap_units)
+
+            gm_total_allocated_units += float(alloc_units)
+            gm_total_produced_units += float(prod_units)
+
+            rows.append(
+                {
+                    "Plant": plant,
+                    "Share": f"{prod_pct}%",
+                    "Allocated (units)": int(round(alloc_units)),
+                    "Capacity (units)": int(round(cap_units)),
+                    "Produced (capped)": int(round(prod_units)),
+                }
+            )
+
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+        allocated_pct = 100.0 * (gm_total_allocated_units / float(gm_demand_units)) if gm_demand_units > 0 else 0.0
+        produced_pct = 100.0 * (gm_total_produced_units / float(gm_demand_units)) if gm_demand_units > 0 else 0.0
+
+        met_by_allocation = gm_total_allocated_units >= float(gm_demand_units) - 1e-6
+        met_by_capacity = gm_total_produced_units >= float(gm_demand_units) - 1e-6
+
+        # Summary
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Total demand (units)", f"{gm_demand_units:,}")
+        col_b.metric("Allocated production", f"{allocated_pct:.1f}%")
+        col_c.metric("Feasible production (capacity)", f"{produced_pct:.1f}%")
+
+        gm_unmet_demand_units = max(float(gm_demand_units) - float(gm_total_produced_units), 0.0)
+
+        if not met_by_allocation:
+            st.warning(
+                f"⚠️ Production shares sum to **{allocated_pct:.1f}%**. "
+                f"That leaves **{int(round(float(gm_demand_units) - gm_total_allocated_units)):,} units** unassigned."
+            )
+
+        if met_by_allocation and not met_by_capacity:
+            st.warning(
+                f"⚠️ Even though allocation reaches 100%+, plant capacity limits reduce feasible production to "
+                f"**{produced_pct:.1f}%** (shortfall: **{int(round(gm_unmet_demand_units)):,} units**)."
+            )
+
+        if not met_by_capacity:
+            st.error("Demand is not satisfied under the current production assignment/capacities.")
+        else:
+            st.success("Demand can be satisfied under the current production assignment (given capacities).")
+
+    # Expose in session_state for optional downstream use / debugging
+    st.session_state["gm_production_share_by_plant"] = gm_production_share_by_plant
+    st.session_state["gm_production_capacity_by_plant"] = gm_production_capacity_by_plant
+    st.session_state["gm_total_produced_units"] = gm_total_produced_units
+    st.session_state["gm_unmet_demand_units"] = gm_unmet_demand_units
+
+
     st.markdown("---")
 
     # ---------------------------
@@ -385,4 +516,11 @@ def render_gamification_mode() -> Dict[str, Any]:
         # mode shares
         "gm_mode_share_L1_by_plant": gm_mode_share_L1_by_plant,
         "gm_mode_share_L2_by_origin": gm_mode_share_L2_by_origin,
+
+        # production feasibility (UI-only checks)
+        "gm_demand_units": gm_demand_units,
+        "gm_total_produced_units": gm_total_produced_units,
+        "gm_unmet_demand_units": gm_unmet_demand_units,
+        "gm_production_share_by_plant": gm_production_share_by_plant,
+        "gm_production_capacity_by_plant": gm_production_capacity_by_plant,
     }
