@@ -80,12 +80,12 @@ def _on_optimization_change():
     st.session_state["factory_radio"] = None
 
 # Collapsible "Factory Model" group
-with st.sidebar.expander("🏭 Factory Model", expanded=True):
+with st.sidebar.expander("🧭 Scenario Dashboards", expanded=True):
     factory_choice = st.radio(
         "Select model:",
         [
-            "SC1 – Existing Facilities",
-            "SC2 – New Facilities"
+            "Scenario 1 – Existing Network (Speed vs Emissions)",
+            "Scenario 2 – Local Sourcing (New Facilities)"
         ],
         index=None,
         key="factory_radio",
@@ -105,11 +105,11 @@ with st.sidebar.expander("📊 Optimization", expanded=True):
 # ================================================================
 # ROUTING LOGIC
 # ================================================================
-if factory_choice == "SC1 – Existing Facilities":
+if factory_choice == "Scenario 1 – Existing Network (Speed vs Emissions)":
     run_sc1()
     st.stop()
 
-elif factory_choice == "SC2 – New Facilities":
+elif factory_choice == "Scenario 2 – Local Sourcing (New Facilities)":
     run_sc2()
     st.stop()
 
@@ -124,7 +124,7 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Global Supply Chain Optimization ")
+st.title("🌍 Supply Chain Decision Support Dashboard")
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
@@ -199,7 +199,7 @@ EPS = 1e-6
 # IMPORTANT: Map displayed City labels -> model facility keys used in variable names
 # Adjust these to match YOUR model naming.
 CITY_TO_KEYS = {
-    # Plants (model keys)
+    # Manufacturers (model keys)
     "Shanghai": ["Shanghai"],
     "Taiwan": ["Taiwan"],  
 
@@ -276,7 +276,13 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/Water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
+    """
+    Sum units moved by transportation mode for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3'.
+
+    Notes:
+      - Variable names encode the mode in the last bracket position (e.g., ...,'air'/'water'/'road').
+      - We treat both 'water' and legacy 'sea' tokens as Water for display consistency.
+    """
     totals = {"air": 0.0, "Water": 0.0, "road": 0.0}
     if model is None:
         return totals
@@ -288,9 +294,17 @@ def sum_flows_by_mode_model(model, prefix: str):
         parts = _parse_inside_brackets(n)
         if not parts or len(parts) < 3:
             continue
-        mode = str(parts[-1]).lower()
-        if mode in totals:
-            totals[mode] += _safe_float(getattr(v, "X", 0.0))
+
+        mode_raw = str(parts[-1]).strip().lower()
+        if mode_raw in ("water", "sea"):
+            mode_key = "Water"
+        elif mode_raw in ("air", "road"):
+            mode_key = mode_raw
+        else:
+            # Unknown token — ignore to keep UI robust
+            continue
+
+        totals[mode_key] += float(getattr(v, "X", 0.0) or 0.0)
 
     return totals
 
@@ -311,7 +325,7 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
 
 def render_transport_flows_by_mode(model):
     st.markdown("## 🚚 Transport Flows by Mode")
-    display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
+    display_layer_summary_model(model, "Layer 1: Manufacturers → Cross-docks", "f1", include_road=False)
     display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
     display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
     display_layer_summary_model(model, "Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
@@ -720,7 +734,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         "L3": {"air": 0.0, "Water": 0.0, "road": 0.0},
     }
 
-    # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
+    # --- Layer 1: Manufacturers -> Crossdocks (equal split over crossdocks)
     transport_L1 = 0.0
     inv_L1 = 0.0
     sourcing_L1 = 0.0
@@ -921,7 +935,7 @@ def _render_puzzle_mode():
     st.markdown("#### Facility selection")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.caption("Layer 1 Plants")
+        st.caption("Layer 1 Manufacturers")
         plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
     with col2:
         st.caption("Cross-docks")
@@ -978,7 +992,7 @@ def _render_puzzle_mode():
             air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
-    st.markdown("**Layer 3 (DC → Retailer)**")
+    st.markdown("**Layer 3 (DC → Retailer hubs)**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
@@ -1046,7 +1060,7 @@ def _render_puzzle_mode():
         with c_cost:
             st.metric("💰 Total Cost (€)", f"{total_cost_val:,.2f}")
         with c_em:
-            st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
+            st.metric("🌿 Total Emissions (tons CO₂)", f"{total_co2_val:,.2f}")
 
         # Base case values + percent-change comparisons (to show the trade-off)
         st.markdown("#### 🔎 Base case comparison")
@@ -1392,14 +1406,14 @@ def _render_puzzle_mode():
 
 
 # ------------------------------------------------------------
-# Mode selection (Normal vs Gamification vs Puzzle)
+# Mode selection (Optimization vs Gamification vs Puzzle)
 # ------------------------------------------------------------
 # Toggle Gamification Mode on/off via env var:
 #   ENABLE_GAMIFICATION=1 (default) -> shows Gamification Mode
 #   ENABLE_GAMIFICATION=0          -> hides Gamification Mode
 ENABLE_GAMIFICATION = False
 
-mode_options = ["Normal Mode"]
+mode_options = ["Optimization Mode"]
 if ENABLE_GAMIFICATION:
     mode_options.append("Gamification Mode")
 mode_options.append("Puzzle Mode")
@@ -1447,7 +1461,7 @@ if mode == "Gamification Mode":
     gm_modes_L2 = gm_ctx["gm_modes_L2"]
     gm_modes_L3 = gm_ctx["gm_modes_L3"]
 
-# For Normal Mode we keep the default flags (all False, tariff 1.0)
+# For Optimization Mode we keep the default flags (all False, tariff 1.0)
 
 # ------------------------------------------------------------
 # Parameter Inputs
@@ -1459,26 +1473,29 @@ co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 # In Gamification Mode we always run the parametric MASTER model.
 # Model selection has no effect there, so we hide the selector.
 if mode == "Gamification Mode":
-    model_choice = "SC2F – Allow New Facilities"
+    model_choice = "SC2F – Scenario 2: Local Sourcing (New Facilities)"
 else:
     model_choice = st.selectbox(
-        "Optimization model:",
-        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
+        "Optimization model (scenario):",
+        ["SC1F – Scenario 1: Existing Network", "SC2F – Scenario 2: Local Sourcing (New Facilities)"]
     )
 
 # Base sourcing costs (same as MASTER defaults)
 BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
 
-# Expose sourcing-cost multiplier and EU carbon price only for SC2F in Normal Mode.
+# Expose sourcing-cost surcharge and EU carbon price only for Scenario 2 in Optimization Mode.
 # (Gamification Mode keeps MASTER defaults and does not expose these controls.)
-if (mode == "Normal Mode") and ("SC2F" in model_choice):
+if (mode == "Optimization Mode") and ("SC2F" in model_choice):
+    # Scenario 2 stress test knob (tariff / Asian sourcing cost shock)
+    # We call this control "Sourcing Cost Surcharge" in the case materials.
+    # 100% = baseline; 300% = 3× Asian sourcing costs.
     sourcing_cost_multiplier_pct = st.slider(
-        "Sourcing Cost Multiplier (Layer 1) (%)",
-        min_value=50,
-        max_value=400,
+        "Sourcing Cost Surcharge (Asian manufacturers, Layer 1) (%)",
+        min_value=100,
+        max_value=300,
         value=100,
-        step=1,
-        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × (multiplier% / 100).",
+        step=50,
+        help="Scales Layer 1 sourcing costs for Asian manufacturers (Taiwan, Shanghai): effective_cost = base_cost × (surcharge% / 100).",
     )
     sourcing_cost_multiplier = float(sourcing_cost_multiplier_pct) / 100.0
 
@@ -1500,8 +1517,8 @@ if "service_level" not in st.session_state:
     st.session_state["service_level"] = 0.90
 
 
-# Only let user edit it in Normal Mode + SC1F (your requirement)
-if (mode == "Normal Mode") and ("SC1F" in model_choice):
+# Only let user edit it in Optimization Mode + SC1F (your requirement)
+if (mode == "Optimization Mode") and ("SC1F" in model_choice):
     st.session_state["service_level"] = st.slider(
         "Service Level",
         min_value=0.50,
@@ -1566,8 +1583,8 @@ if st.button("Run Optimization"):
                 # Benchmarking
                 # ------------------------------------------------------------
                 try:
-                    # Always benchmark against SC2F optimal (Allow New Facilities)
-                    benchmark_label = "SC2F Optimal (Allow New Facilities)"
+                    # Always benchmark against Scenario 2 optimal (new facilities)
+                    benchmark_label = "Scenario 2 Optimal (New Facilities)"
                 
                     # Use the same CO₂ price the user entered
                     # - SC1F seçiliyse: co2_cost_per_ton var
@@ -1640,7 +1657,7 @@ if st.button("Run Optimization"):
             with c_cost:
                 st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
             with c_em:
-                st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
+                st.metric("🌿 Total Emissions (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
 
             # ------------------------------------------------------------
             # Show gap vs optimal (only in Gamification Mode)
