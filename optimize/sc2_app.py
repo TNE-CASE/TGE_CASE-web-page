@@ -21,7 +21,7 @@ def run_sc2():
     #     initial_sidebar_state="expanded"
     # )
     
-    st.title("🏭 Local Sourcing for Resilience and Impact")
+    st.title("🏭 Scenario 2: Local Sourcing for Resilience and Impact")
     
     # ----------------------------------------------------
     # 🧭 CACHED DATA LOADERS
@@ -58,9 +58,9 @@ def run_sc2():
     
     
     # ----------------------------------------------------
-    # 📦 DEMAND FULFILLMENT RATE SELECTION
+    # 📦 DEMAND LEVEL SELECTION
     # ----------------------------------------------------
-    st.sidebar.header("📦 Demand Fulfillment Rate (%)")
+    st.sidebar.header("📦 Demand Level (%)")
     
     LOCAL_XLSX_PATH = "simulation_results_demand_levelsSC2.xlsx"
     available_sheets = get_sheet_names(LOCAL_XLSX_PATH)
@@ -71,10 +71,10 @@ def run_sc2():
         demand_sheets = available_sheets
     
     selected_demand = st.sidebar.selectbox(
-        "Demand Fulfillment Rate (%)",
+        "Demand Level (%)",
         demand_sheets if demand_sheets else ["Default"],
         index=0,
-        help="Select which demand fulfillment rate's results to visualize."
+        help="Select which demand level's results to visualize."
     )
     
     # ----------------------------------------------------
@@ -97,6 +97,21 @@ def run_sc2():
         st.stop()
         
     df_display = df.applymap(format_number)
+
+    def format_demand_level(value, fallback_label: str = ""):
+        """Return a human-friendly demand level label (e.g., '95%')."""
+        try:
+            # Some sheets store demand as a fraction (0–1)
+            v = float(value)
+            if 0 <= v <= 1:
+                return f"{v * 100:.0f}%"
+            # Or already percent
+            if 1 < v <= 100:
+                return f"{v:.0f}%"
+        except Exception:
+            pass
+        return fallback_label or "N/A"
+
     
     
     # ----------------------------------------------------
@@ -152,31 +167,45 @@ def run_sc2():
         help="Select the EU carbon price column value."
     )
 
-    # 🎛️ Sourcing cost multiplier selector (Asia only) — optional if present in dataset
+    # 🎛️ Sourcing Cost Surcharge (Asia only) — optional if present in dataset
+    # Teaching note UI: We call the Sourcing Cost Multiplier “Sourcing Cost Surcharge”; a sliding bar
+    # from 100% to 300%, 50% increments. Internally this maps to a multiplier of 1.0–3.0.
     scm_col = next((c for c in df.columns if "sourcing" in c.lower() and "multiplier" in c.lower()), None)
     if scm_col is not None:
-        scm_options = sorted(pd.to_numeric(df[scm_col], errors="coerce").dropna().unique().tolist())
-        if scm_options:
-            default_scm = 1.0 if 1.0 in scm_options else scm_options[0]
-            selected_scm = st.sidebar.selectbox(
-                "Sourcing Cost Multiplier (Asia)",
-                scm_options,
-                index=scm_options.index(default_scm),
-                help="Filter scenarios by the multiplier applied to Asia (Taiwan/Shanghai) sourcing costs."
+        scm_values = sorted(pd.to_numeric(df[scm_col], errors="coerce").dropna().unique().tolist())
+        if scm_values:
+            selected_surcharge_pct = st.sidebar.slider(
+                "Sourcing Cost Surcharge (%)",
+                min_value=100,
+                max_value=300,
+                value=100,
+                step=50,
+                help="Applies only to Asia (Taiwan/Shanghai) sourcing costs."
             )
-            df_scm = df[df[scm_col] == selected_scm].copy()
-            if not df_scm.empty:
+            requested_multiplier = selected_surcharge_pct / 100.0
+
+            # Use exact multiplier if available; otherwise snap to the closest available value in the dataset
+            closest_multiplier = min(scm_values, key=lambda x: abs(x - requested_multiplier))
+            df_scm = df[df[scm_col] == closest_multiplier].copy()
+
+            if df_scm.empty:
+                st.warning("⚠️ No scenarios match this sourcing surcharge — showing all instead.")
+            else:
+                if abs(closest_multiplier - requested_multiplier) > 1e-9:
+                    st.info(
+                        f"ℹ️ This dataset doesn't include {selected_surcharge_pct:.0f}% exactly. "
+                        f"Showing the closest available surcharge: {closest_multiplier * 100:.0f}%."
+                    )
                 df = df_scm
-                # If any derived views were computed earlier, re-derive them on the filtered dataset
+                # Re-derive any cached derived views on the filtered dataset
                 try:
                     data_by_weight = preprocess(df)  # noqa: F841
                 except Exception:
                     pass
-            else:
-                st.warning("⚠️ No scenarios match this sourcing multiplier — showing all instead.")
 
-    
+
     # Decide which column the dataset uses for EU carbon price
+
     price_col = None
     if "CO2_CostAtMfg" in df.columns:
         price_col = "CO2_CostAtMfg"
@@ -187,7 +216,7 @@ def run_sc2():
     pool = df.copy() if price_col is None else df[df[price_col] == co2_cost]
     
     if pool.empty:
-        st.error("This solution is not feasible — even Swiss precision couldn’t optimize it! 🇨🇭")
+        st.error("This solution is not feasible- even Swiss precision couldn't optimize it! Please adjust the CO2 target and parameters.")
         st.stop()
     
     # Require an **exact** match for the chosen CO₂ reduction (as requested)
@@ -197,7 +226,7 @@ def run_sc2():
     if exact.empty:
         # No feasible solution for this exact CO₂ target at this price → show the funny message and stop
         st.error(
-            "This solution is not feasible — even Swiss precision couldn’t optimize it! 🇨🇭"
+            "This solution is not feasible- even Swiss precision couldn't optimize it! Please adjust the CO2 target and parameters."
         )
         st.stop()
     
@@ -226,7 +255,7 @@ def run_sc2():
     # ----------------------------------------------------
     if pd.isna(closest.get("Objective_value", None)):
         st.error(
-            "This solution is not feasible — even Swiss precision couldn’t optimize it! 🇨🇭"
+            "This solution is not feasible- even Swiss precision couldn't optimize it! Please adjust the CO2 target and parameters."
         )
         st.stop()
     
@@ -386,7 +415,7 @@ def run_sc2():
         names="Source",
         values="Produced (units)",
         hole=0.3,
-        title=f"Production Share by Source (Demand Level: {closest.get('Demand_Level', 'N/A')*100:.0f}%)",
+        title=f"Production Share by Source (Demand Level: {format_demand_level(closest.get('Demand_Level', None), selected_demand)})",
     )
     
     # --- Make 'Unmet Demand' grey ---
@@ -434,7 +463,7 @@ def run_sc2():
     TOTAL_MARKET_DEMAND = 111000  # units
     
     # --- Gather f2 variables (Crossdock → DC) ---
-    f2_cols = [c for c in df.columns if c.startswith("f2[")]
+    f2_cols = [c for c in closest.index if c.startswith("f2[")]
     
     # --- Define crossdocks used in SC2 ---
     crossdocks = ["Paris", "Gdansk", "Vienna"]
@@ -471,7 +500,7 @@ def run_sc2():
             names="Crossdock",
             values="Shipped (units)",
             hole=0.3,
-            title=f"Crossdock Outbound Share (Demand Level: {closest.get('Demand_Level', 'N/A')*100:.0f}%)",
+            title=f"Crossdock Outbound Share (Demand Level: {format_demand_level(closest.get('Demand_Level', None), selected_demand)})",
         )
     
         # --- Assign color map ---
@@ -525,7 +554,7 @@ def run_sc2():
     })
 
     dcs = pd.DataFrame({
-        "Type": ["Distribution Centre"] * 4,
+        "Type": ["Distribution Center"] * 4,
         "Lat": [50.040750, 50.954468, 56.946285, 28.116667],
         "Lon": [15.776590, 1.862801, 24.105078, -17.216667]
     })
@@ -577,7 +606,7 @@ def run_sc2():
     color_map = {
         "Plant": "purple",
         "Cross-dock": "dodgerblue",
-        "Distribution Centre": "black",
+        "Distribution Center": "black",
         "Retailer Hub": "red",
         "New Production Facility": "deepskyblue"
     }
@@ -585,7 +614,7 @@ def run_sc2():
     size_map = {
         "Plant": 15,
         "Cross-dock": 14,
-        "Distribution Centre": 16,
+        "Distribution Center": 16,
         "Retailer Hub": 20,
         "New Production Facility": 14
     }
@@ -627,7 +656,7 @@ def run_sc2():
     st.markdown("""
     **Legend:**
     - 🏗️ **Cross-dock**  
-    - 🏬 **Distribution Centre**  
+    - 🏬 **Distribution Center**  
     - 🔴 **Retailer Hub**  
     - ⚙️ **New Production Facility**  
     - 🏭 **Plant** 
@@ -643,7 +672,7 @@ def run_sc2():
     
     def sum_flows_by_mode(prefix):
         """Sum up air/water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3'."""
-        flow_cols = [c for c in df.columns if c.startswith(prefix + "[")]
+        flow_cols = [c for c in closest.index if c.startswith(prefix + "[")]
         totals = {"air": 0.0, "water": 0.0, "road": 0.0}
     
         for col in flow_cols:
@@ -651,6 +680,11 @@ def run_sc2():
             match = re.search(r",\s*([a-zA-Z]+)\]$", col)
             if match:
                 mode = match.group(1).lower()
+                # Normalize common synonyms so we keep UI naming consistent
+                if mode == "sea":
+                    mode = "water"
+                if mode == "truck":
+                    mode = "road"
                 if mode in totals:
                     try:
                         totals[mode] += float(closest[col])
@@ -663,7 +697,7 @@ def run_sc2():
         totals = sum_flows_by_mode(prefix)
         st.markdown(f"### {title}")
         cols = st.columns(3 if include_road else 2)
-        cols[0].metric("🚢 water", f"{totals['water']:,.0f} units")
+        cols[0].metric("🚢 Water", f"{totals['water']:,.0f} units")
         cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
         if include_road:
             cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
@@ -757,59 +791,54 @@ def run_sc2():
     # --- 🌿 Emission Distribution (from recorded columns) ---
     with col2:
         st.subheader("Emission Distribution")
-    
-        # Expected emission columns
-        emission_cols = ["E_air", "E_water", "E_road", "E_lastmile", "E_production"]
-    
-        # Check if all required emission columns exist
-        missing_cols = [c for c in emission_cols if c not in df.columns]
-        if missing_cols:
-            st.warning(f"⚠️ Missing columns: {', '.join(missing_cols)}")
-    
-        # --- Recalculate E_Production using the correct formula ---
-        try:
-            if all(col in df.columns for col in ["E_air", "E_water", "E_road", "E_lastmile", "CO2_Total"]):
-                corrected_E_prod = (
-                    float(closest["CO2_Total"])
-                    - float(closest["E_air"])
-                    - float(closest["E_water"])
-                    - float(closest["E_road"])
-                    - float(closest["E_lastmile"])
-                )
-    
-                # ✅ Include Total Transport (sum of Air + water + Road)
-                total_transport = (
-                    float(closest["E_air"])
-                    + float(closest["E_water"])
-                    + float(closest["E_road"])
-                )
-    
-                emission_data = {
-                    "Production": corrected_E_prod,
-                    "Last-mile": float(closest["E_lastmile"]),
-                    "Air": float(closest["E_air"]),
-                    "water": float(closest["E_water"]),
-                    "Road": float(closest["E_road"]),
-                    "Total Transport": total_transport,
-                }
-    
-            else:
-                st.info("⚠️ Could not recalculate E_Production — some columns are missing.")
-                emission_data = {}
-        except Exception as e:
-            st.error(f"Error recalculating emissions: {e}")
-            emission_data = {}
-    
-        # --- Plot if valid data exist ---
-        if not emission_data:
+
+        def _first_present(series: pd.Series, keys):
+            """Return the first available numeric value among candidate column names."""
+            for k in keys:
+                if k in series.index:
+                    try:
+                        v = series.get(k)
+                        if pd.notna(v):
+                            return float(v)
+                    except Exception:
+                        continue
+            return None
+
+        e_air = _first_present(closest, ["E_air", "E_Air"])
+        e_water = _first_present(closest, ["E_water", "E_Water", "E_sea", "E_Sea"])
+        e_road = _first_present(closest, ["E_road", "E_Road"])
+        e_lastmile = _first_present(closest, ["E_lastmile", "E_Lastmile", "E_LastMile"])
+        e_total = _first_present(closest, ["CO2_Total", "CO2_total", "CO2TOTAL"])
+
+        missing = []
+        if e_air is None: missing.append("E_air")
+        if e_water is None: missing.append("E_water / E_sea")
+        if e_road is None: missing.append("E_road")
+        if e_lastmile is None: missing.append("E_lastmile")
+        if e_total is None: missing.append("CO2_Total")
+
+        if missing:
+            st.warning("⚠️ Missing emission columns: " + ", ".join(missing))
             st.info("No valid emission values found in this scenario.")
         else:
+            # --- Recalculate Production Emissions from totals (keeps dataset untouched) ---
+            corrected_E_prod = e_total - e_air - e_water - e_road - e_lastmile
+            total_transport = e_air + e_water + e_road
+
+            emission_data = {
+                "Production": corrected_E_prod,
+                "Last-mile": e_lastmile,
+                "Air": e_air,
+                "Water": e_water,
+                "Road": e_road,
+                "Total Transport": total_transport,
+            }
+
             df_emission = pd.DataFrame({
                 "Source": list(emission_data.keys()),
                 "Emission (tons)": list(emission_data.values())
             })
-    
-            # --- Build Plotly chart ---
+
             fig_emission = px.bar(
                 df_emission,
                 x="Source",
@@ -820,30 +849,25 @@ def run_sc2():
                     "#4B8A08", "#2E8B57", "#808080", "#FFD700", "#90EE90", "#000000"
                 ]
             )
-    
-            # ✅ Add commas and keep 2 decimals
+
             fig_emission.update_traces(
                 texttemplate="%{text:,.2f}",
                 textposition="outside",
                 marker_line_color="black",
                 marker_line_width=0.5
             )
-    
+
             fig_emission.update_layout(
                 template="plotly_white",
                 showlegend=False,
                 xaxis_tickangle=-35,
                 yaxis_title="Tons of CO₂",
                 height=400,
-                yaxis_tickformat=","  # comma separators on y-axis
-                
+                yaxis_tickformat=","
             )
-    
+
             st.plotly_chart(fig_emission, use_container_width=True)
-    
-    
-    
-    # ----------------------------------------------------
+# ----------------------------------------------------
     # RAW DATA VIEW
     # ----------------------------------------------------
     with st.expander("📄 Show Full Summary Data"):
