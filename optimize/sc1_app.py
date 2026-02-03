@@ -88,7 +88,7 @@ def run_sc1():
     #     initial_sidebar_state="expanded"
     # )
     
-    st.title("🏭 Service Speed vs. Emission Reductions")
+    st.title("🏭 Scenario 1: Service Speed vs. Emission Reductions")
     
     
     
@@ -113,7 +113,7 @@ def run_sc1():
     # ----------------------------------------------------
     # SIDEBAR CONTROLS (SC2-style layout)
     # ----------------------------------------------------
-    st.sidebar.header("📦 Demand Fulfillment Rate (%)")
+    st.sidebar.header("📦 Demand Level (%)")
 
     # Extract numeric levels automatically (e.g., Array_90% → 90)
     levels = sorted(
@@ -124,10 +124,10 @@ def run_sc1():
 
     # Dropdown to pick demand level (matches SC2 look & feel)
     selected_level_label = st.sidebar.selectbox(
-        "Demand Fulfillment Rate (%)",
+        "Demand Level (%)",
         options=level_labels,
         index=0,
-        help="Select which demand fulfillment rate's results to visualize."
+        help="Select the demand level whose scenario results you want to visualize."
     )
     selected_level = int(str(selected_level_label).replace("%", "").strip())
 
@@ -635,7 +635,7 @@ def run_sc1():
     })
 
     dcs = pd.DataFrame({
-        "Type": ["Distribution Centre"] * 4,
+        "Type": ["Distribution Center"] * 4,
         "Lat": [50.040750, 50.629250, 56.946285, 28.116667],
         "Lon": [15.776590, 3.057256, 24.105078, -17.216667]
     })
@@ -651,7 +651,7 @@ def run_sc1():
     color_map = {
         "Plant": "purple",
         "Cross-dock": "dodgerblue",
-        "Distribution Centre": "black",
+        "Distribution Center": "black",
         "Retailer Hub": "red"
     }
     
@@ -684,41 +684,70 @@ def run_sc1():
     # 🚢✈️🚛 FLOW SUMMARY (using LayerX naming)
     # ----------------------------------------------------
     st.markdown("## 🚚 Transport Flows by Mode")
-    
-    # --- Helper to read totals safely ---
-    def get_value_safe(col):
-        return float(closest[col]) if col in closest.index else 0.0
-    
-    # --- Layer 1: Plants → Cross-docks ---
+
+    # --- Helper: read a value from the scenario row using multiple possible column names ---
+    def get_value_safe_any(keys):
+        for k in keys:
+            if k in closest.index:
+                try:
+                    return float(closest[k])
+                except Exception:
+                    try:
+                        return float(str(closest[k]).replace(",", "."))
+                    except Exception:
+                        return 0.0
+        return 0.0
+
+    # --- Column aliases (do NOT change the data; just read robustly) ---
+    # Water may appear as Water/water/Sea/sea depending on the source file.
+    L1_WATER = ["Layer1Water", "Layer1water", "Layer1Sea", "Layer1sea"]
+    L1_AIR   = ["Layer1Air", "Layer1air"]
+
+    L2_WATER = ["Layer2Water", "Layer2water", "Layer2Sea", "Layer2sea"]
+    L2_AIR   = ["Layer2Air", "Layer2air"]
+    L2_ROAD  = ["Layer2Road", "Layer2road"]
+
+    L3_WATER = ["Layer3Water", "Layer3water", "Layer3Sea", "Layer3sea"]
+    L3_AIR   = ["Layer3Air", "Layer3air"]
+    L3_ROAD  = ["Layer3Road", "Layer3road"]
+
+    # --- Layer 1: Plants → Cross-docks (Air/Water only) ---
     st.markdown("### Layer 1: Plants → Cross-docks")
     col1, col2 = st.columns(2)
-    col1.metric("🚢 water", f"{get_value_safe('Layer1water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer1Air'):,.0f} units")
-    if get_value_safe("Layer1water") + get_value_safe("Layer1Air") == 0:
+    l1_water = get_value_safe_any(L1_WATER)
+    l1_air = get_value_safe_any(L1_AIR)
+    col1.metric("🚢 Water", f"{l1_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l1_air:,.0f} units")
+    if (l1_water + l1_air) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
+
     # --- Layer 2: Cross-docks → DCs ---
     st.markdown("### Layer 2: Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 water", f"{get_value_safe('Layer2water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer2Air'):,.0f} units")
-    col3.metric("🚛 Road", f"{get_value_safe('Layer2Road'):,.0f} units")
-    if get_value_safe("Layer2water") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
+    l2_water = get_value_safe_any(L2_WATER)
+    l2_air = get_value_safe_any(L2_AIR)
+    l2_road = get_value_safe_any(L2_ROAD)
+    col1.metric("🚢 Water", f"{l2_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l2_air:,.0f} units")
+    col3.metric("🚛 Road", f"{l2_road:,.0f} units")
+    if (l2_water + l2_air + l2_road) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
-    # --- Layer 3: DCs → Retailers ---
+
+    # --- Layer 3: DCs → Retailer Hubs ---
     st.markdown("### Layer 3: DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 water", f"{get_value_safe('Layer3water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer3Air'):,.0f} units")
-    col3.metric("🚛 Road", f"{get_value_safe('Layer3Road'):,.0f} units")
-    if get_value_safe("Layer3water") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
+    l3_water = get_value_safe_any(L3_WATER)
+    l3_air = get_value_safe_any(L3_AIR)
+    l3_road = get_value_safe_any(L3_ROAD)
+    col1.metric("🚢 Water", f"{l3_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l3_air:,.0f} units")
+    col3.metric("🚛 Road", f"{l3_road:,.0f} units")
+    if (l3_water + l3_air + l3_road) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
-    # ----------------------------------------------------
+# ----------------------------------------------------
     # 💰🌿 COST & EMISSION DISTRIBUTION SECTION
     # ----------------------------------------------------
     st.markdown("## 💰 Cost and 🌿 Emission Distribution")
@@ -775,9 +804,10 @@ def run_sc1():
         # We read from the currently selected scenario row ("closest") and fall back to Demand_* if needed.
         emission_aliases = {
             "Production": ["E_Production", "E(Production)", "E_production"],
-            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile"],
+            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile", "E_LastMile", "E(LastMile)"],
             "Air": ["E_Air", "E(Air)", "E_air"],
-            "water": ["E_water", "E(water)", "E_water"],
+            # NOTE: In some files this was called Sea/sea/water/Water. UI should always show 'Water'.
+            "Water": ["E_Water", "E(Water)", "E_water", "E(water)", "E_Sea", "E(Sea)", "E_sea", "E(sea)"],
             "Road": ["E_Road", "E(Road)", "E_road"],
         }
 
@@ -807,7 +837,7 @@ def run_sc1():
 
         # ✅ Add Total Transport (sum of Air + water + Road)
         emission_data["Total Transport"] = (
-            emission_data.get("Air", 0) + emission_data.get("water", 0) + emission_data.get("Road", 0)
+            emission_data.get("Air", 0) + emission_data.get("Water", 0) + emission_data.get("Road", 0)
         )
 
         if sum(emission_data.values()) == 0:
@@ -850,5 +880,4 @@ def run_sc1():
     # ----------------------------------------------------
     with st.expander("📄 Show Full Data Table"):
         st.dataframe(df.head(500), use_container_width=True)
-
 
