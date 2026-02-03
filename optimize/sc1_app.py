@@ -111,30 +111,33 @@ def run_sc1():
         st.stop()
     
     # ----------------------------------------------------
-    # SIDEBAR CONTROLS
+    # SIDEBAR CONTROLS (SC2-style layout)
     # ----------------------------------------------------
-    st.sidebar.header("🎛️ Model Controls")
-    
+    st.sidebar.header("📦 Demand Fulfillment Rate (%)")
+
     # Extract numeric levels automatically (e.g., Array_90% → 90)
     levels = sorted(
         [int(re.findall(r"\d+", name)[0]) for name in sheet_names],
         reverse=True
     )
-    
-    # Slider to pick demand level
-    selected_level = st.sidebar.slider(
+    level_labels = [f"{lvl}%" for lvl in levels]
+
+    # Dropdown to pick demand level (matches SC2 look & feel)
+    selected_level_label = st.sidebar.selectbox(
         "Demand Fulfillment Rate (%)",
-        min_value=min(levels),
-        max_value=max(levels),
-        step=5,
-        value=max(levels)
+        options=level_labels,
+        index=0,
+        help="Select which demand fulfillment rate's results to visualize."
     )
+    selected_level = int(str(selected_level_label).replace("%", "").strip())
 
-
-
-    
     selected_sheet = f"Array_{selected_level}%"
-    st.sidebar.write(f"📄 Using sheet: `{selected_sheet}`")
+
+    # ----------------------------------------------------
+    # FILTER PARAMETERS (SC2-style layout)
+    # ----------------------------------------------------
+    st.sidebar.header("🎛️ Filter Parameters")
+    
     
     # Load selected sheet
     df = excel_data[selected_sheet].round(2)
