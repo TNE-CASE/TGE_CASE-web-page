@@ -11,6 +11,7 @@ import requests
 from io import BytesIO
 import re
 
+import json
 import streamlit.components.v1 as components
 
 
@@ -88,7 +89,7 @@ def run_sc1():
     #     initial_sidebar_state="expanded"
     # )
     
-    st.title("🏭 Service Speed vs. Emission Reductions")
+    st.title("🏭 Scenario 1: Service Speed vs. Emission Reductions")
     
     
     
@@ -111,30 +112,33 @@ def run_sc1():
         st.stop()
     
     # ----------------------------------------------------
-    # SIDEBAR CONTROLS
+    # SIDEBAR CONTROLS (SC2-style layout)
     # ----------------------------------------------------
-    st.sidebar.header("🎛️ Model Controls")
-    
+    st.sidebar.header("📦 Demand Level (%)")
+
     # Extract numeric levels automatically (e.g., Array_90% → 90)
     levels = sorted(
         [int(re.findall(r"\d+", name)[0]) for name in sheet_names],
         reverse=True
     )
-    
-    # Slider to pick demand level
-    selected_level = st.sidebar.slider(
-        "Demand Fulfillment Rate (%)",
-        min_value=min(levels),
-        max_value=max(levels),
-        step=5,
-        value=max(levels)
+    level_labels = [f"{lvl}%" for lvl in levels]
+
+    # Dropdown to pick demand level (matches SC2 look & feel)
+    selected_level_label = st.sidebar.selectbox(
+        "Demand Level (%)",
+        options=level_labels,
+        index=0,
+        help="Select the demand level whose scenario results you want to visualize."
     )
+    selected_level = int(str(selected_level_label).replace("%", "").strip())
 
-
-
-    
     selected_sheet = f"Array_{selected_level}%"
-    st.sidebar.write(f"📄 Using sheet: `{selected_sheet}`")
+
+    # ----------------------------------------------------
+    # FILTER PARAMETERS (SC2-style layout)
+    # ----------------------------------------------------
+    st.sidebar.header("🎛️ Filter Parameters")
+    
     
     # Load selected sheet
     df = excel_data[selected_sheet].round(2)
@@ -223,27 +227,162 @@ def run_sc1():
     co2_pct = co2_pct_display / 100.0
     
     # Find closest feasible scenario (if any)
-    if (subset[co2_col] - co2_pct).abs().min() < 1e-6:
-        closest = subset.iloc[(subset[co2_col] - co2_pct).abs().argmin()]
-        feasible = True
-    else:
-        feasible = False
-    
     # ----------------------------------------------------
-    # 🚦 FEASIBILITY CHECK
+    # ✅ FIND CLOSEST SCENARIO (always show something)
     # ----------------------------------------------------
-    if not feasible:
-        st.error(
-            f"❌ This solution was never feasible — even Swiss precision couldn't optimize it! 🇨🇭\n\n"
-            "Try adjusting your CO₂ target or demand level."
+    diff = (subset[co2_col] - co2_pct).abs()
+    closest_pos = int(diff.argmin()) if len(diff) else 0
+    min_diff = float(diff.min()) if len(diff) else 0.0
+    closest = subset.iloc[closest_pos]
+
+    # If the target does not exist exactly in the precomputed scenarios, inform the user and continue.
+    if min_diff > 1e-6:
+        closest_pct_disp = float(closest[co2_col]) * 100.0
+        if hasattr(st, "toast"):
+            st.toast(
+                f"ℹ️ No exact scenario at {co2_pct_display}% CO₂ reduction. Showing closest available: {closest_pct_disp:.1f}%.",
+                icon="ℹ️"
+            )
+        st.info(
+            f"ℹ️ You selected **{co2_pct_display}%** CO₂ reduction, but the dataset contains discrete scenarios. "
+            f"Showing the closest available scenario at **{closest_pct_disp:.1f}%**."
         )
-        st.stop()
-    
-    
+
     # ----------------------------------------------------
-    # FIND CLOSEST SCENARIO
+    # 🚨 UNSATISFIED DEMAND WARNING (UNS fallback)
     # ----------------------------------------------------
-    closest = subset.iloc[(subset[co2_col] - co2_pct).abs().argmin()]
+    def _find_key_ci(keys, target_name: str):
+        target = str(target_name).strip().lower()
+        for k in keys:
+            if str(k).strip().lower() == target:
+                return k
+        return None
+
+    def _to_float_safe(v, default=None):
+        try:
+            if v is None or (hasattr(pd, "isna") and pd.isna(v)):
+                return default
+            return float(v)
+        except Exception:
+            try:
+                return float(str(v).replace(",", "."))
+            except Exception:
+                return default
+
+    def _to_bool_safe(v) -> bool:
+        if isinstance(v, bool):
+            return v
+        s = str(v).strip().lower()
+        return s in ("true", "1", "yes", "y", "t")
+
+    used_uns_key = _find_key_ci(closest.index, "Used_UNS_Fallback")
+    sat_units_key = _find_key_ci(closest.index, "Satisfied_Demand_units")
+    sat_pct_key = _find_key_ci(closest.index, "Satisfied_Demand_pct")
+    unmet_units_key = _find_key_ci(closest.index, "Unmet_Demand_units")
+
+    used_uns = _to_bool_safe(closest.get(used_uns_key)) if used_uns_key else False
+    satisfied_units = _to_float_safe(closest.get(sat_units_key), default=None) if sat_units_key else None
+    satisfied_pct = _to_float_safe(closest.get(sat_pct_key), default=None) if sat_pct_key else None
+    unmet_units = _to_float_safe(closest.get(unmet_units_key), default=None) if unmet_units_key else None
+
+    # Determine if demand is fully satisfied (robust to missing columns)
+    unsatisfied = False
+    if satisfied_pct is not None and satisfied_pct < 0.999999:
+        unsatisfied = True
+    if unmet_units is not None and unmet_units > 1e-6:
+        unsatisfied = True
+    if used_uns:
+        unsatisfied = True
+
+    # Always clean any previous popup; then optionally show a new one.
+    _popup_id = "unsatisfiable-demand-popup"
+    _popup_msg_parts = []
+    if unsatisfied:
+        if satisfied_pct is not None:
+            _popup_msg_parts.append(f"Only {satisfied_pct*100:.1f}% of total demand is satisfied.")
+        if unmet_units is not None:
+            _popup_msg_parts.append(f"Unmet demand: {unmet_units:,.0f} units.")
+        if used_uns:
+            _popup_msg_parts.append("This result uses the UNS fallback (max satisfiable demand).")
+        _popup_msg_parts.append("To satisfy all demand, reduce the CO₂ target, lower demand, or relax constraints (e.g., service level).")
+
+        popup_text = " ".join(_popup_msg_parts)
+
+        # Visible, persistent warning in the app (plus overlay popup)
+        st.sidebar.error("⚠️ Demand is NOT fully satisfiable for this selection.")
+        st.error(f"⚠️ Demand is NOT fully satisfiable for this selection. {popup_text}")
+
+        # Overlay popup (hard to miss)
+        popup_text_js = json.dumps(popup_text)
+        components.html(f'''
+        <script>
+        (function() {{
+            const doc = window.parent.document;
+            const existing = doc.getElementById("{_popup_id}");
+            if (existing) existing.remove();
+
+            const wrap = doc.createElement("div");
+            wrap.id = "{_popup_id}";
+            wrap.style.position = "fixed";
+            wrap.style.top = "16px";
+            wrap.style.left = "50%";
+            wrap.style.transform = "translateX(-50%)";
+            wrap.style.zIndex = "999999";
+            wrap.style.maxWidth = "900px";
+            wrap.style.width = "calc(100% - 32px)";
+            wrap.style.boxShadow = "0 10px 30px rgba(0,0,0,0.25)";
+            wrap.style.borderRadius = "14px";
+            wrap.style.background = "#B00020";
+            wrap.style.color = "white";
+            wrap.style.padding = "14px 16px";
+            wrap.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
+
+            const msg = doc.createElement("div");
+            msg.style.display = "flex";
+            msg.style.alignItems = "flex-start";
+            msg.style.gap = "12px";
+
+            const icon = doc.createElement("div");
+            icon.innerHTML = "⚠️";
+            icon.style.fontSize = "22px";
+            icon.style.lineHeight = "1";
+
+            const txt = doc.createElement("div");
+            txt.style.flex = "1";
+            txt.innerHTML = "<div style='font-weight:700; font-size:15px; margin-bottom:4px;'>Demand not fully satisfiable</div>"
+                          + "<div style='font-size:13px; opacity:0.95; line-height:1.35;'>" + {popup_text_js} + "</div>";
+
+            const btn = doc.createElement("button");
+            btn.innerHTML = "✕";
+            btn.style.background = "rgba(255,255,255,0.15)";
+            btn.style.border = "1px solid rgba(255,255,255,0.25)";
+            btn.style.color = "white";
+            btn.style.borderRadius = "10px";
+            btn.style.cursor = "pointer";
+            btn.style.padding = "6px 10px";
+            btn.style.fontSize = "14px";
+            btn.style.lineHeight = "1";
+            btn.onclick = () => wrap.remove();
+
+            msg.appendChild(icon);
+            msg.appendChild(txt);
+            msg.appendChild(btn);
+            wrap.appendChild(msg);
+            doc.body.appendChild(wrap);
+        }})();
+        </script>
+        ''', height=0)
+    else:
+        # remove old popup if user changes to a satisfiable scenario
+        components.html(f'''
+        <script>
+        (function() {{
+            const doc = window.parent.document;
+            const existing = doc.getElementById("{_popup_id}");
+            if (existing) existing.remove();
+        }})();
+        </script>
+        ''', height=0)
     
     # ----------------------------------------------------
     # KPI SUMMARY
@@ -632,9 +771,9 @@ def run_sc1():
     })
 
     dcs = pd.DataFrame({
-        "Type": ["Distribution Centre"] * 4,
-        "Lat": [50.040750, 50.629250, 56.946285, 28.116667],
-        "Lon": [15.776590, 3.057256, 24.105078, -17.216667]
+        "Type": ["Distribution Center"] * 4,
+        "Lat": [50.040750, 50.629250, 56.946285, 36.168056],
+        "Lon": [15.776590, 3.057256, 24.105078, -5.348611]
     })
 
     retailers = pd.DataFrame({
@@ -648,7 +787,7 @@ def run_sc1():
     color_map = {
         "Plant": "purple",
         "Cross-dock": "dodgerblue",
-        "Distribution Centre": "black",
+        "Distribution Center": "black",
         "Retailer Hub": "red"
     }
     
@@ -681,41 +820,70 @@ def run_sc1():
     # 🚢✈️🚛 FLOW SUMMARY (using LayerX naming)
     # ----------------------------------------------------
     st.markdown("## 🚚 Transport Flows by Mode")
-    
-    # --- Helper to read totals safely ---
-    def get_value_safe(col):
-        return float(closest[col]) if col in closest.index else 0.0
-    
-    # --- Layer 1: Plants → Cross-docks ---
+
+    # --- Helper: read a value from the scenario row using multiple possible column names ---
+    def get_value_safe_any(keys):
+        for k in keys:
+            if k in closest.index:
+                try:
+                    return float(closest[k])
+                except Exception:
+                    try:
+                        return float(str(closest[k]).replace(",", "."))
+                    except Exception:
+                        return 0.0
+        return 0.0
+
+    # --- Column aliases (do NOT change the data; just read robustly) ---
+    # Water may appear as Water/water/Sea/sea depending on the source file.
+    L1_WATER = ["Layer1Water", "Layer1water", "Layer1Sea", "Layer1sea"]
+    L1_AIR   = ["Layer1Air", "Layer1air"]
+
+    L2_WATER = ["Layer2Water", "Layer2water", "Layer2Sea", "Layer2sea"]
+    L2_AIR   = ["Layer2Air", "Layer2air"]
+    L2_ROAD  = ["Layer2Road", "Layer2road"]
+
+    L3_WATER = ["Layer3Water", "Layer3water", "Layer3Sea", "Layer3sea"]
+    L3_AIR   = ["Layer3Air", "Layer3air"]
+    L3_ROAD  = ["Layer3Road", "Layer3road"]
+
+    # --- Layer 1: Plants → Cross-docks (Air/Water only) ---
     st.markdown("### Layer 1: Plants → Cross-docks")
     col1, col2 = st.columns(2)
-    col1.metric("🚢 Water", f"{get_value_safe('Layer1Water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer1Air'):,.0f} units")
-    if get_value_safe("Layer1Water") + get_value_safe("Layer1Air") == 0:
+    l1_water = get_value_safe_any(L1_WATER)
+    l1_air = get_value_safe_any(L1_AIR)
+    col1.metric("🚢 Water", f"{l1_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l1_air:,.0f} units")
+    if (l1_water + l1_air) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
+
     # --- Layer 2: Cross-docks → DCs ---
     st.markdown("### Layer 2: Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Water", f"{get_value_safe('Layer2Water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer2Air'):,.0f} units")
-    col3.metric("🚛 Road", f"{get_value_safe('Layer2Road'):,.0f} units")
-    if get_value_safe("Layer2Water") + get_value_safe("Layer2Air") + get_value_safe("Layer2Road") == 0:
+    l2_water = get_value_safe_any(L2_WATER)
+    l2_air = get_value_safe_any(L2_AIR)
+    l2_road = get_value_safe_any(L2_ROAD)
+    col1.metric("🚢 Water", f"{l2_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l2_air:,.0f} units")
+    col3.metric("🚛 Road", f"{l2_road:,.0f} units")
+    if (l2_water + l2_air + l2_road) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
-    # --- Layer 3: DCs → Retailers ---
+
+    # --- Layer 3: DCs → Retailer Hubs ---
     st.markdown("### Layer 3: DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
-    col1.metric("🚢 Water", f"{get_value_safe('Layer3Water'):,.0f} units")
-    col2.metric("✈️ Air", f"{get_value_safe('Layer3Air'):,.0f} units")
-    col3.metric("🚛 Road", f"{get_value_safe('Layer3Road'):,.0f} units")
-    if get_value_safe("Layer3Water") + get_value_safe("Layer3Air") + get_value_safe("Layer3Road") == 0:
+    l3_water = get_value_safe_any(L3_WATER)
+    l3_air = get_value_safe_any(L3_AIR)
+    l3_road = get_value_safe_any(L3_ROAD)
+    col1.metric("🚢 Water", f"{l3_water:,.0f} units")
+    col2.metric("✈️ Air", f"{l3_air:,.0f} units")
+    col3.metric("🚛 Road", f"{l3_road:,.0f} units")
+    if (l3_water + l3_air + l3_road) == 0:
         st.info("No transport activity recorded for this layer.")
     st.markdown("---")
-    
-    # ----------------------------------------------------
+# ----------------------------------------------------
     # 💰🌿 COST & EMISSION DISTRIBUTION SECTION
     # ----------------------------------------------------
     st.markdown("## 💰 Cost and 🌿 Emission Distribution")
@@ -772,9 +940,10 @@ def run_sc1():
         # We read from the currently selected scenario row ("closest") and fall back to Demand_* if needed.
         emission_aliases = {
             "Production": ["E_Production", "E(Production)", "E_production"],
-            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile"],
+            "Last-mile": ["E_Last-mile", "E(Last-mile)", "E_lastmile", "E_last-mile", "E_LastMile", "E(LastMile)"],
             "Air": ["E_Air", "E(Air)", "E_air"],
-            "Water": ["E_Water", "E(Water)", "E_Water"],
+            # NOTE: In some files this was called Sea/sea/water/Water. UI should always show 'Water'.
+            "Water": ["E_Water", "E(Water)", "E_water", "E(water)", "E_Sea", "E(Sea)", "E_sea", "E(sea)"],
             "Road": ["E_Road", "E(Road)", "E_road"],
         }
 
@@ -802,7 +971,7 @@ def run_sc1():
             for name, keys in emission_aliases.items()
         }
 
-        # ✅ Add Total Transport (sum of Air + Water + Road)
+        # ✅ Add Total Transport (sum of Air + water + Road)
         emission_data["Total Transport"] = (
             emission_data.get("Air", 0) + emission_data.get("Water", 0) + emission_data.get("Road", 0)
         )
@@ -847,5 +1016,4 @@ def run_sc1():
     # ----------------------------------------------------
     with st.expander("📄 Show Full Data Table"):
         st.dataframe(df.head(500), use_container_width=True)
-
 
