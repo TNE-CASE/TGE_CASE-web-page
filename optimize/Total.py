@@ -212,7 +212,7 @@ CITY_TO_KEYS = {
     "Pardubice": ["Pardubice"],
     "Calais": ["Calais"],
     "Riga": ["Riga"],
-    "LaGomera": ["LaGomera"],
+    "Algeciras": ["Algeciras"],
 
     # Retailers 
     "Cologne": ["Cologne"],
@@ -472,12 +472,12 @@ def _puzzle_defaults():
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
-    dcs_all = ["Pardubice", "Calais", "Riga", "LaGomera"]
+    dcs_all = ["Pardubice", "Calais", "Riga", "Algeciras"]
     new_locs_all = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
 
-    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
+    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "Algeciras": 100000}
     handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077,
-                   "Riga": 4.426038462, "LaGomera": 7.0865}
+                   "Riga": 4.426038462, "Algeciras": 7.0865}
     handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
 
     sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
@@ -511,7 +511,7 @@ def _puzzle_defaults():
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna", "Gdansk", "Paris"],
-        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "Algeciras"],
     )
     dist2_new = pd.DataFrame(
         [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -520,14 +520,14 @@ def _puzzle_defaults():
          [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
          [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
         index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
-        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "Algeciras"],
     )
     dist3 = pd.DataFrame(
         [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice", "Calais", "Riga", "LaGomera"],
+        index=["Pardubice", "Calais", "Riga", "Algeciras"],
         columns=list(demand.keys()),
     )
 
@@ -1204,7 +1204,7 @@ def _render_puzzle_mode():
             ("DC", 50.040750, 15.776590, "Pardubice"),
             ("DC", 50.954468, 1.862801, "Calais"),
             ("DC", 56.946285, 24.105078, "Riga"),
-            ("DC", 28.116667, -17.216667, "LaGomera"),
+            ("DC", 36.168056, -5.348611, "Algeciras"),
             ("Retail", 50.935173, 6.953101, "Cologne"),
             ("Retail", 51.219890, 4.403460, "Antwerp"),
             ("Retail", 50.061430, 19.936580, "Krakow"),
@@ -1797,7 +1797,7 @@ if st.button("Run Optimization"):
                 ("DC", 50.040750, 15.776590, "Pardubice"),
                 ("DC", 50.629250, 3.057256, "Calais"),
                 ("DC", 56.946285, 24.105078, "Riga"),
-                ("DC", 28.116667, -17.216667, "LaGomera"),
+                ("DC", 36.168056, -5.348611, "Algeciras"),
                 ("Retail", 50.935173, 6.953101, "Cologne"),
                 ("Retail", 51.219890, 4.403460, "Antwerp"),
                 ("Retail", 50.061430, 19.936580, "Krakow"),
@@ -2159,7 +2159,7 @@ if st.button("Run Optimization"):
                     ("DC", 47.50, 19.04, "Pardubice"),
                     ("DC", 48.14, 11.58, "Calais"),
                     ("DC", 46.95, 7.44, "Riga"),
-                    ("DC", 45.46, 9.19, "LaGomera"),
+                    ("DC", 36.168056, -5.348611, "Algeciras"),
                     ("Retail", 55.67, 12.57, "Cologne"),
                     ("Retail", 53.35, -6.26, "Antwerp"),
                     ("Retail", 51.50, -0.12, "Krakow"),
