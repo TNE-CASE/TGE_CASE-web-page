@@ -10,6 +10,123 @@ import plotly.express as px
 import requests
 from io import BytesIO
 import openpyxl
+import streamlit.components.v1 as components
+
+
+# ----------------------------------------------------
+# 🚨 BIG WARNING POP-UP (injects into top window)
+# ----------------------------------------------------
+def _safe_float(x, default=0.0):
+    try:
+        if x is None or (isinstance(x, float) and pd.isna(x)):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+def inject_big_warning_popup(*, title: str, subtitle: str, details_html: str, token: str):
+    """
+    Creates a full-screen overlay pop-up in the *top* browser window via JS injection.
+    The pop-up is dismissible (Close button). We remember dismissal per-token in localStorage.
+    """
+    # Prevent breaking the <script> string if user-provided text contains quotes/backticks.
+    title_js = title.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+    subtitle_js = subtitle.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+    token_js = token.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+
+    # details_html is HTML; we escape only </script> to be safe.
+    details_html_safe = details_html.replace("</script>", "<\\/script>")
+
+    components.html(f"""
+<script>
+(function() {{
+  const overlayId = "tge-demand-warning";
+  const dismissKey = "tge:demand_warning:dismissed:" + "{token_js}";
+  const topWin = window.parent;
+  const doc = topWin.document;
+
+  if (topWin.localStorage && topWin.localStorage.getItem(dismissKey) === "1") {{
+    return;
+  }}
+
+  // Remove any existing overlay (e.g., from a previous scenario)
+  const old = doc.getElementById(overlayId);
+  if (old) old.remove();
+
+  const overlay = doc.createElement('div');
+  overlay.id = overlayId;
+  overlay.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "background:rgba(0,0,0,0.82)",
+    "z-index:999999",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "padding:24px"
+  ].join(";");
+
+  overlay.innerHTML = `
+    <div style="
+      background:#fff;
+      border-radius:28px;
+      width:min(980px, 94vw);
+      max-height:92vh;
+      overflow:auto;
+      border:10px solid #ff1f1f;
+      box-shadow:0 18px 60px rgba(0,0,0,0.45);
+      padding:26px 28px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    ">
+      <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
+        <div>
+          <div style="font-size:32px; font-weight:900; color:#b00000; line-height:1.1;">
+            ${"{title_js}"}
+          </div>
+          <div style="margin-top:10px; font-size:18px; font-weight:700; color:#111;">
+            ${"{subtitle_js}"}
+          </div>
+        </div>
+        <button id="tge-demand-warning-close" style="
+          background:#ff1f1f;
+          color:#fff;
+          border:none;
+          border-radius:14px;
+          padding:12px 16px;
+          font-size:16px;
+          font-weight:800;
+          cursor:pointer;
+          box-shadow:0 6px 18px rgba(255,31,31,0.35);
+        ">Close</button>
+      </div>
+
+      <div style="margin-top:18px; font-size:16px; color:#111; line-height:1.45;">
+        ${"{details_html_safe}"}
+      </div>
+
+      <div style="margin-top:18px; padding:14px 16px; border-radius:16px; background:#fff3f3; border:2px solid #ffb3b3;">
+        <div style="font-size:14px; font-weight:800; color:#7a0000; margin-bottom:6px;">
+          Important
+        </div>
+        <div style="font-size:14px; color:#333;">
+          You can continue exploring the charts below. Results are shown for the closest scenario available in the dataset.
+        </div>
+      </div>
+    </div>
+  `;
+
+  doc.body.appendChild(overlay);
+
+  doc.getElementById("tge-demand-warning-close").onclick = () => {{
+    try {{
+      if (topWin.localStorage) topWin.localStorage.setItem(dismissKey, "1");
+    }} catch (e) {{}}
+    overlay.remove();
+  }};
+}})();
+</script>
+""", height=0)
+
 
 def run_sc2():
     # # ----------------------------------------------------
@@ -214,24 +331,14 @@ def run_sc2():
     
     # Apply price filter if we found a price column, otherwise keep all rows
     pool = df.copy() if price_col is None else df[df[price_col] == co2_cost]
-    
+
     if pool.empty:
-        st.error("This solution is not feasible- even Swiss precision couldn't optimize it! Please adjust the CO2 target and parameters.")
-        st.stop()
-    
-    # Require an **exact** match for the chosen CO₂ reduction (as requested)
-    TOL = 1e-9
-    exact = pool[(pool["CO2_percentage"] - co2_pct).abs() < TOL] if "CO2_percentage" in pool.columns else pd.DataFrame()
-    
-    if exact.empty:
-        # No feasible solution for this exact CO₂ target at this price → show the funny message and stop
-        st.error(
-            "This solution is not feasible- even Swiss precision couldn't optimize it! Please adjust the CO2 target and parameters."
-        )
-        st.stop()
-    
-    # Pick the first exact match (you can later add tie-breakers if needed)
-    closest = exact.iloc[0]
+        st.warning("⚠️ No scenarios match this CO₂ price — showing all instead.")
+        pool = df.copy()
+
+    # NOTE: We do NOT require an exact CO₂ match here.
+    # We always snap to the closest available scenario below so the dashboard keeps rendering.
+
     
     # ----------------------------------------------------
     # FILTER SUBSET AND FIND CLOSEST SCENARIO
@@ -266,6 +373,53 @@ def run_sc2():
         )
     
     
+
+    # ----------------------------------------------------
+    # 🚨 UNSATISFIED DEMAND CHECK (big pop-up)
+    # ----------------------------------------------------
+    used_uns = bool(closest.get("Used_UNS_Fallback", False))
+    satisfied_pct = _safe_float(closest.get("Satisfied_Demand_pct", 1.0), 1.0)
+    satisfied_units = _safe_float(closest.get("Satisfied_Demand_units", None), None)
+    unmet_units = _safe_float(closest.get("Unmet_Demand_units", 0.0), 0.0)
+
+    if satisfied_units is None:
+        satisfied_units = _safe_float(closest.get("DemandFulfillment", 0.0), 0.0)
+
+    is_unsatisfied = used_uns or (unmet_units > 1e-6) or (satisfied_pct < 0.999999)
+
+    if is_unsatisfied:
+        sat_pct_disp = max(0.0, min(1.0, satisfied_pct)) * 100.0
+        details = f"""
+        <div style="font-size:18px; font-weight:800; margin-bottom:10px;">
+          Demand cannot be fully satisfied under the selected scenario.
+        </div>
+        <ul style="margin:0; padding-left:20px;">
+          <li><b>UNS fallback used:</b> {str(used_uns)}</li>
+          <li><b>Satisfied demand:</b> {satisfied_units:,.2f} units</li>
+          <li><b>Unmet demand:</b> {unmet_units:,.2f} units</li>
+          <li><b>Satisfaction:</b> {sat_pct_disp:.2f}%</li>
+        </ul>
+        <div style="margin-top:14px;">
+          <div style="font-size:14px; font-weight:800; color:#333; margin-bottom:6px;">Satisfaction bar</div>
+          <div style="width:100%; background:#eee; border-radius:999px; height:18px; overflow:hidden;">
+            <div style="width:{sat_pct_disp:.2f}%; height:18px; background:#ff1f1f;"></div>
+          </div>
+        </div>
+        """
+
+        token = f"SC2|{selected_demand}|CO2={int(co2_pct*100)}|price={co2_cost}|SID={closest.get('Scenario_ID','')}"
+        inject_big_warning_popup(
+            title="⚠️ UNSATISFIED DEMAND",
+            subtitle="Some customer demand remains unmet with the selected parameters.",
+            details_html=details,
+            token=token
+        )
+
+        st.error(
+            f"⚠️ Unsatisfied demand detected: {unmet_units:,.2f} units unmet "
+            f"({sat_pct_disp:.2f}% satisfied)."
+        )
+
     # ----------------------------------------------------
     # KPI VIEW
     # ----------------------------------------------------
@@ -555,8 +709,8 @@ def run_sc2():
 
     dcs = pd.DataFrame({
         "Type": ["Distribution Center"] * 4,
-        "Lat": [50.040750, 50.954468, 56.946285, 28.116667],
-        "Lon": [15.776590, 1.862801, 24.105078, -17.216667]
+        "Lat": [50.040750, 50.954468, 56.946285, 36.168056],
+        "Lon": [15.776590, 1.862801, 24.105078, -5.348611]
     })
 
     retailers = pd.DataFrame({

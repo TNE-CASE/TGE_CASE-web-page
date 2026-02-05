@@ -11,7 +11,6 @@ import requests
 from io import BytesIO
 import re
 
-import json
 import streamlit.components.v1 as components
 
 
@@ -77,6 +76,122 @@ def format_number(value):
         return f"{float(value):,.2f}"
     except (ValueError, TypeError):
         return value
+
+
+# ----------------------------------------------------
+# 🚨 BIG WARNING POP-UP (injects into top window)
+# ----------------------------------------------------
+def _safe_float(x, default=0.0):
+    try:
+        if x is None or (isinstance(x, float) and pd.isna(x)):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+def inject_big_warning_popup(*, title: str, subtitle: str, details_html: str, token: str):
+    """
+    Creates a full-screen overlay pop-up in the *top* browser window via JS injection.
+    The pop-up is dismissible (Close button). We remember dismissal per-token in localStorage.
+    """
+    # Prevent breaking the <script> string if user-provided text contains quotes/backticks.
+    title_js = title.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+    subtitle_js = subtitle.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+    token_js = token.replace("`", " ").replace("\\", "\\\\").replace('"', '\"')
+
+    # details_html is HTML; we escape only </script> to be safe.
+    details_html_safe = details_html.replace("</script>", "<\\/script>")
+
+    components.html(f"""
+<script>
+(function() {{
+  const overlayId = "tge-demand-warning";
+  const dismissKey = "tge:demand_warning:dismissed:" + "{token_js}";
+  const topWin = window.parent;
+  const doc = topWin.document;
+
+  if (topWin.localStorage && topWin.localStorage.getItem(dismissKey) === "1") {{
+    return;
+  }}
+
+  // Remove any existing overlay (e.g., from a previous scenario)
+  const old = doc.getElementById(overlayId);
+  if (old) old.remove();
+
+  const overlay = doc.createElement('div');
+  overlay.id = overlayId;
+  overlay.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "background:rgba(0,0,0,0.82)",
+    "z-index:999999",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "padding:24px"
+  ].join(";");
+
+  overlay.innerHTML = `
+    <div style="
+      background:#fff;
+      border-radius:28px;
+      width:min(980px, 94vw);
+      max-height:92vh;
+      overflow:auto;
+      border:10px solid #ff1f1f;
+      box-shadow:0 18px 60px rgba(0,0,0,0.45);
+      padding:26px 28px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    ">
+      <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
+        <div>
+          <div style="font-size:32px; font-weight:900; color:#b00000; line-height:1.1;">
+            ${"{title_js}"}
+          </div>
+          <div style="margin-top:10px; font-size:18px; font-weight:700; color:#111;">
+            ${"{subtitle_js}"}
+          </div>
+        </div>
+        <button id="tge-demand-warning-close" style="
+          background:#ff1f1f;
+          color:#fff;
+          border:none;
+          border-radius:14px;
+          padding:12px 16px;
+          font-size:16px;
+          font-weight:800;
+          cursor:pointer;
+          box-shadow:0 6px 18px rgba(255,31,31,0.35);
+        ">Close</button>
+      </div>
+
+      <div style="margin-top:18px; font-size:16px; color:#111; line-height:1.45;">
+        ${"{details_html_safe}"}
+      </div>
+
+      <div style="margin-top:18px; padding:14px 16px; border-radius:16px; background:#fff3f3; border:2px solid #ffb3b3;">
+        <div style="font-size:14px; font-weight:800; color:#7a0000; margin-bottom:6px;">
+          Important
+        </div>
+        <div style="font-size:14px; color:#333;">
+          You can continue exploring the charts below. Results are shown for the closest scenario available in the dataset.
+        </div>
+      </div>
+    </div>
+  `;
+
+  doc.body.appendChild(overlay);
+
+  doc.getElementById("tge-demand-warning-close").onclick = () => {{
+    try {{
+      if (topWin.localStorage) topWin.localStorage.setItem(dismissKey, "1");
+    }} catch (e) {{}}
+    overlay.remove();
+  }};
+}})();
+</script>
+""", height=0)
+
 
 
 def run_sc1():
@@ -225,165 +340,69 @@ def run_sc1():
     
     # Convert displayed percentage back to 0–1 for internal matching
     co2_pct = co2_pct_display / 100.0
-    
-    # Find closest feasible scenario (if any)
-    # ----------------------------------------------------
-    # ✅ FIND CLOSEST SCENARIO (always show something)
-    # ----------------------------------------------------
-    diff = (subset[co2_col] - co2_pct).abs()
-    closest_pos = int(diff.argmin()) if len(diff) else 0
-    min_diff = float(diff.min()) if len(diff) else 0.0
-    closest = subset.iloc[closest_pos]
 
-    # If the target does not exist exactly in the precomputed scenarios, inform the user and continue.
-    if min_diff > 1e-6:
-        closest_pct_disp = float(closest[co2_col]) * 100.0
-        if hasattr(st, "toast"):
-            st.toast(
-                f"ℹ️ No exact scenario at {co2_pct_display}% CO₂ reduction. Showing closest available: {closest_pct_disp:.1f}%.",
-                icon="ℹ️"
-            )
+    # Pick closest scenario (dataset is discrete; slider may not hit an exact point)
+    closest_idx = (subset[co2_col] - co2_pct).abs().argmin()
+    closest = subset.iloc[int(closest_idx)]
+
+    # If no exact match, keep going (do NOT stop)
+    if abs(float(closest[co2_col]) - float(co2_pct)) > 1e-6:
         st.info(
-            f"ℹ️ You selected **{co2_pct_display}%** CO₂ reduction, but the dataset contains discrete scenarios. "
-            f"Showing the closest available scenario at **{closest_pct_disp:.1f}%**."
+            f"ℹ️ No exact scenario at CO₂ target = {co2_pct_display:.0f}% — "
+            f"showing closest available: {float(closest[co2_col]) * 100:.0f}%."
         )
 
-    # ----------------------------------------------------
-    # 🚨 UNSATISFIED DEMAND WARNING (UNS fallback)
-    # ----------------------------------------------------
-    def _find_key_ci(keys, target_name: str):
-        target = str(target_name).strip().lower()
-        for k in keys:
-            if str(k).strip().lower() == target:
-                return k
-        return None
-
-    def _to_float_safe(v, default=None):
-        try:
-            if v is None or (hasattr(pd, "isna") and pd.isna(v)):
-                return default
-            return float(v)
-        except Exception:
-            try:
-                return float(str(v).replace(",", "."))
-            except Exception:
-                return default
-
-    def _to_bool_safe(v) -> bool:
-        if isinstance(v, bool):
-            return v
-        s = str(v).strip().lower()
-        return s in ("true", "1", "yes", "y", "t")
-
-    used_uns_key = _find_key_ci(closest.index, "Used_UNS_Fallback")
-    sat_units_key = _find_key_ci(closest.index, "Satisfied_Demand_units")
-    sat_pct_key = _find_key_ci(closest.index, "Satisfied_Demand_pct")
-    unmet_units_key = _find_key_ci(closest.index, "Unmet_Demand_units")
-
-    used_uns = _to_bool_safe(closest.get(used_uns_key)) if used_uns_key else False
-    satisfied_units = _to_float_safe(closest.get(sat_units_key), default=None) if sat_units_key else None
-    satisfied_pct = _to_float_safe(closest.get(sat_pct_key), default=None) if sat_pct_key else None
-    unmet_units = _to_float_safe(closest.get(unmet_units_key), default=None) if unmet_units_key else None
-
-    # Determine if demand is fully satisfied (robust to missing columns)
-    unsatisfied = False
-    if satisfied_pct is not None and satisfied_pct < 0.999999:
-        unsatisfied = True
-    if unmet_units is not None and unmet_units > 1e-6:
-        unsatisfied = True
-    if used_uns:
-        unsatisfied = True
-
-    # Always clean any previous popup; then optionally show a new one.
-    _popup_id = "unsatisfiable-demand-popup"
-    _popup_msg_parts = []
-    if unsatisfied:
-        if satisfied_pct is not None:
-            _popup_msg_parts.append(f"Only {satisfied_pct*100:.1f}% of total demand is satisfied.")
-        if unmet_units is not None:
-            _popup_msg_parts.append(f"Unmet demand: {unmet_units:,.0f} units.")
-        if used_uns:
-            _popup_msg_parts.append("This result uses the UNS fallback (max satisfiable demand).")
-        _popup_msg_parts.append("To satisfy all demand, reduce the CO₂ target, lower demand, or relax constraints (e.g., service level).")
-
-        popup_text = " ".join(_popup_msg_parts)
-
-        # Visible, persistent warning in the app (plus overlay popup)
-        st.sidebar.error("⚠️ Demand is NOT fully satisfiable for this selection.")
-        st.error(f"⚠️ Demand is NOT fully satisfiable for this selection. {popup_text}")
-
-        # Overlay popup (hard to miss)
-        popup_text_js = json.dumps(popup_text)
-        components.html(f'''
-        <script>
-        (function() {{
-            const doc = window.parent.document;
-            const existing = doc.getElementById("{_popup_id}");
-            if (existing) existing.remove();
-
-            const wrap = doc.createElement("div");
-            wrap.id = "{_popup_id}";
-            wrap.style.position = "fixed";
-            wrap.style.top = "16px";
-            wrap.style.left = "50%";
-            wrap.style.transform = "translateX(-50%)";
-            wrap.style.zIndex = "999999";
-            wrap.style.maxWidth = "900px";
-            wrap.style.width = "calc(100% - 32px)";
-            wrap.style.boxShadow = "0 10px 30px rgba(0,0,0,0.25)";
-            wrap.style.borderRadius = "14px";
-            wrap.style.background = "#B00020";
-            wrap.style.color = "white";
-            wrap.style.padding = "14px 16px";
-            wrap.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
-
-            const msg = doc.createElement("div");
-            msg.style.display = "flex";
-            msg.style.alignItems = "flex-start";
-            msg.style.gap = "12px";
-
-            const icon = doc.createElement("div");
-            icon.innerHTML = "⚠️";
-            icon.style.fontSize = "22px";
-            icon.style.lineHeight = "1";
-
-            const txt = doc.createElement("div");
-            txt.style.flex = "1";
-            txt.innerHTML = "<div style='font-weight:700; font-size:15px; margin-bottom:4px;'>Demand not fully satisfiable</div>"
-                          + "<div style='font-size:13px; opacity:0.95; line-height:1.35;'>" + {popup_text_js} + "</div>";
-
-            const btn = doc.createElement("button");
-            btn.innerHTML = "✕";
-            btn.style.background = "rgba(255,255,255,0.15)";
-            btn.style.border = "1px solid rgba(255,255,255,0.25)";
-            btn.style.color = "white";
-            btn.style.borderRadius = "10px";
-            btn.style.cursor = "pointer";
-            btn.style.padding = "6px 10px";
-            btn.style.fontSize = "14px";
-            btn.style.lineHeight = "1";
-            btn.onclick = () => wrap.remove();
-
-            msg.appendChild(icon);
-            msg.appendChild(txt);
-            msg.appendChild(btn);
-            wrap.appendChild(msg);
-            doc.body.appendChild(wrap);
-        }})();
-        </script>
-        ''', height=0)
-    else:
-        # remove old popup if user changes to a satisfiable scenario
-        components.html(f'''
-        <script>
-        (function() {{
-            const doc = window.parent.document;
-            const existing = doc.getElementById("{_popup_id}");
-            if (existing) existing.remove();
-        }})();
-        </script>
-        ''', height=0)
     
+
+    # ----------------------------------------------------
+    # 🚨 UNSATISFIED DEMAND CHECK (big pop-up)
+    # ----------------------------------------------------
+    used_uns = bool(closest.get("Used_UNS_Fallback", False))
+    satisfied_pct = _safe_float(closest.get("Satisfied_Demand_pct", 1.0), 1.0)
+    satisfied_units = _safe_float(closest.get("Satisfied_Demand_units", None), None)
+    unmet_units = _safe_float(closest.get("Unmet_Demand_units", 0.0), 0.0)
+
+    # Backward-compatible fallback: some older sheets only have DemandFulfillment
+    if satisfied_units is None:
+        satisfied_units = _safe_float(closest.get("DemandFulfillment", 0.0), 0.0)
+
+    is_unsatisfied = used_uns or (unmet_units > 1e-6) or (satisfied_pct < 0.999999)
+
+    if is_unsatisfied:
+        sat_pct_disp = max(0.0, min(1.0, satisfied_pct)) * 100.0
+        details = f"""
+        <div style="font-size:18px; font-weight:800; margin-bottom:10px;">
+          Demand cannot be fully satisfied under the selected scenario.
+        </div>
+        <ul style="margin:0; padding-left:20px;">
+          <li><b>UNS fallback used:</b> {str(used_uns)}</li>
+          <li><b>Satisfied demand:</b> {satisfied_units:,.2f} units</li>
+          <li><b>Unmet demand:</b> {unmet_units:,.2f} units</li>
+          <li><b>Satisfaction:</b> {sat_pct_disp:.2f}%</li>
+        </ul>
+        <div style="margin-top:14px;">
+          <div style="font-size:14px; font-weight:800; color:#333; margin-bottom:6px;">Satisfaction bar</div>
+          <div style="width:100%; background:#eee; border-radius:999px; height:18px; overflow:hidden;">
+            <div style="width:{sat_pct_disp:.2f}%; height:18px; background:#ff1f1f;"></div>
+          </div>
+        </div>
+        """
+
+        sl_val = closest.get(service_col, "") if ('service_col' in locals() and service_col) else ""
+        token = f"SC1|{selected_demand}|CO2={co2_pct_display}|SL={sl_val}|SID={closest.get('Scenario_ID','')}"
+        inject_big_warning_popup(
+            title="⚠️ UNSATISFIED DEMAND",
+            subtitle="Some customer demand remains unmet with the selected parameters.",
+            details_html=details,
+            token=token
+        )
+
+        # Also show an in-app error (for screenshots / exports)
+        st.error(
+            f"⚠️ Unsatisfied demand detected: {unmet_units:,.2f} units unmet "
+            f"({sat_pct_disp:.2f}% satisfied)."
+        )
+
     # ----------------------------------------------------
     # KPI SUMMARY
     # ----------------------------------------------------
