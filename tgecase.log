@@ -1,0 +1,29 @@
+
+=== TGECase launch ===
+Exe dir: C:\Users\LENOVO\Desktop\Asistan\TGE Case\TGE_CASE-web-page-main
+Another instance detected. Opened browser and exiting.
+
+=== TGECase launch ===
+Exe dir: C:\Users\LENOVO\Desktop\Asistan\TGE Case\TGE_CASE-web-page-main
+Total.py: C:\Users\LENOVO\Desktop\Asistan\TGE Case\TGE_CASE-web-page-main\optimize\Total.py
+Chosen port: 51662
+Starting Streamlit: streamlit run C:\Users\LENOVO\Desktop\Asistan\TGE Case\TGE_CASE-web-page-main\optimize\Total.py --server.headless=true --server.address=127.0.0.1 --server.port=51662 --browser.gatherUsageStats=false --global.developmentMode=false
+
+  You can now view your Streamlit app in your browser.
+
+  URL: http://127.0.0.1:51662
+
+2026-02-04 08:59:16.089 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+
+=== TGECase launch ===
+Exe dir: C:\Users\LENOVO\Desktop\Asistan\TGE Case\TGE_CASE-web-page-main
+Another instance detected. Opened browser and exiting.
+2026-02-04 08:59:43.701 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
