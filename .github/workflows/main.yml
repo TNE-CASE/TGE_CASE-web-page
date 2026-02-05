@@ -1,0 +1,90 @@
+name: Build macOS .app (PyInstaller)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f optimize/requirements.txt ]; then
+            python -m pip install -r optimize/requirements.txt
+          elif [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          else
+            echo "No requirements.txt found." && exit 1
+          fi
+          python -m pip install --upgrade pyinstaller
+
+          # Optional: try to install gurobipy. If it fails, continue.
+          # (If your app hard-requires gurobi, you should make it optional in code for mac builds.)
+          python -m pip install gurobipy || true
+
+      - name: Build .app with PyInstaller
+        shell: bash
+        run: |
+          # macOS add-data separator is ":"  (NOT ";" like Windows)
+          ADD_DATA="optimize:app"
+          if [ ! -d optimize ]; then
+            echo "optimize/ folder not found." && exit 1
+          fi
+          if [ ! -f launcher.py ]; then
+            echo "launcher.py not found in repo root." && exit 1
+          fi
+
+          # Base args
+          ARGS=(
+            --noconfirm
+            --clean
+            --onedir
+            --windowed
+            --name TGECase
+            --collect-all streamlit
+            --collect-all plotly
+            --collect-all altair
+            --collect-all pydeck
+            --collect-all pandas
+            --collect-all numpy
+            --collect-all scipy
+            --collect-all geopy
+            --copy-metadata streamlit
+            --add-data "$ADD_DATA"
+            launcher.py
+          )
+
+          # If gurobipy is installed in this runner, also try collecting it
+          python -c "import gurobipy" >/dev/null 2>&1 && \
+            ARGS+=( --collect-all gurobipy --collect-binaries gurobipy --collect-submodules gurobipy ) || true
+
+          python -m PyInstaller "${ARGS[@]}"
+
+      - name: Zip .app
+        shell: bash
+        run: |
+          ls -la dist
+          if [ ! -d "dist/TGECase.app" ]; then
+            echo "dist/TGECase.app not found!" && exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "dist/TGECase.app" "TGECase-macOS.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TGECase-macOS-app
+          path: TGECase-macOS.zip
