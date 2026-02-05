@@ -82,9 +82,31 @@ def format_number(value):
 # 🚨 BIG WARNING POP-UP (injects into top window)
 # ----------------------------------------------------
 def _safe_float(x, default=0.0):
+    """Best-effort float conversion with graceful fallback."""
     try:
-        if x is None or (isinstance(x, float) and pd.isna(x)):
+        if x is None:
             return default
+
+        # Strings: allow comma decimals
+        if isinstance(x, str):
+            s = x.strip()
+            if s == "":
+                return default
+            s = s.replace(" ", "")
+            if s.count(",") == 1 and s.count(".") == 0:
+                s = s.replace(",", ".")
+            return float(s)
+
+        # pandas / numpy NA detection (guarded)
+        try:
+            if pd.isna(x):
+                return default
+        except Exception:
+            pass
+
+        return float(x)
+    except Exception:
+        return default
         return float(x)
     except Exception:
         return default
@@ -604,18 +626,6 @@ def run_sc1():
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)
     # ----------------------------------------------------
     st.markdown("## 🏭 Production Outbound Breakdown")
-
-    # --- Helper: safe float conversion ---
-    def _safe_float(x):
-        try:
-            if pd.isna(x):
-                return 0.0
-            return float(x)
-        except Exception:
-            try:
-                return float(str(x).replace(",", "."))
-            except Exception:
-                return 0.0
 
     # --- Read the corresponding detailed (Demand_*) sheet row for flow variables ---
     demand_sheet = f"Demand_{selected_level}%"
