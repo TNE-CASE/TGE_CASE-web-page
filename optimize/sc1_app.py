@@ -370,46 +370,36 @@ def run_sc1():
         )
 
     # ----------------------------------------------------
-# 🚨 UNSATISFIED DEMAND CHECK (NO POP-UP)
-# ----------------------------------------------------
-# Newer exports may include detailed UNS_* columns. Older exports only include DemandFulfillment.
-required_cols = [
-    "Used_UNS_Fallback",
-    "Satisfied_Demand_units",
-    "Satisfied_Demand_pct",
-    "Unmet_Demand_units",
-]
+    # 🚨 UNSATISFIED DEMAND CHECK (NO POP-UP)
+    # ----------------------------------------------------
+    # Newer exports include UNS_* columns. If they're missing, we simply show a single clean warning.
+    required_cols = [
+        "Used_UNS_Fallback",
+        "Satisfied_Demand_units",
+        "Satisfied_Demand_pct",
+        "Unmet_Demand_units",
+    ]
+    missing = [c for c in required_cols if c not in subset.columns]
 
-used_uns = False
-satisfied_units = None
-satisfied_pct = None
-unmet_units = None
-total_demand_units = None
-
-if all(c in subset.columns for c in required_cols):
-    used_uns = _safe_bool(closest.get("Used_UNS_Fallback", False), False)
-    satisfied_units = _safe_float(closest.get("Satisfied_Demand_units", 0.0), 0.0)
-    satisfied_pct = _safe_float(closest.get("Satisfied_Demand_pct", 1.0), 1.0)
-    unmet_units = _safe_float(closest.get("Unmet_Demand_units", 0.0), 0.0)
-    # Prefer a data-driven total if possible
-    total_demand_units = satisfied_units + unmet_units
-elif "DemandFulfillment" in closest.index:
-    # Fallback for older Excel outputs
-    satisfied_units = _safe_float(closest.get("DemandFulfillment", 0.0), 0.0)
-    total_demand_units = 111000 * (selected_level / 100.0)
-    unmet_units = max(total_demand_units - satisfied_units, 0.0)
-    satisfied_pct = (satisfied_units / total_demand_units) if total_demand_units else 1.0
-else:
-    st.warning("⚠️ Demand satisfaction metrics are not available in this Excel output (missing UNS_* columns and DemandFulfillment).")
-
-if satisfied_units is not None and total_demand_units is not None and satisfied_pct is not None and unmet_units is not None:
-    if used_uns or unmet_units > 1e-6 or satisfied_pct < 0.999999:
-        st.error(
-            f"⚠️ Demand not fully satisfied: delivered {satisfied_units:,.0f}/{total_demand_units:,.0f} units "
-            f"({satisfied_pct*100:.2f}%). Unmet: {unmet_units:,.0f} units."
+    if missing:
+        st.warning(
+            "⚠️ Demand satisfaction metrics are not available in this Excel output. "
+            + "Missing columns: " + ", ".join(missing) + ". "
+            + "Please regenerate/upload results that include UNS metrics to enable demand-satisfaction warnings."
         )
+    else:
+        used_uns = _safe_bool(closest.get("Used_UNS_Fallback", False), False)
+        satisfied_units = _safe_float(closest.get("Satisfied_Demand_units", 0.0), 0.0)
+        satisfied_pct = _safe_float(closest.get("Satisfied_Demand_pct", 1.0), 1.0)
+        unmet_units = _safe_float(closest.get("Unmet_Demand_units", 0.0), 0.0)
 
-# ----------------------------------------------------
+        # Trigger if UNS fallback was used OR any unmet demand exists OR pct < 100%
+        if used_uns or unmet_units > 1e-6 or satisfied_pct < 0.999999:
+            st.error(
+                f"⚠️ Demand not fully satisfied in the closest scenario: {satisfied_pct*100:.2f}% satisfied, "
+                f"delivered={satisfied_units:,.0f} units, unmet={unmet_units:,.0f} units."
+            )
+
     # KPI SUMMARY
     # ----------------------------------------------------
     st.subheader("📊 Closest Scenario Details")
@@ -1041,4 +1031,3 @@ if satisfied_units is not None and total_demand_units is not None and satisfied_
     # ----------------------------------------------------
     with st.expander("📄 Show Full Data Table"):
         st.dataframe(df.head(500), use_container_width=True)
-
