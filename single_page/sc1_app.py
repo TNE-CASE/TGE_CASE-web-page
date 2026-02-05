@@ -370,36 +370,116 @@ def run_sc1():
         )
 
     # ----------------------------------------------------
+    # ----------------------------------------------------
     # 🚨 UNSATISFIED DEMAND CHECK (NO POP-UP)
     # ----------------------------------------------------
-    # Newer exports include UNS_* columns. If they're missing, we simply show a single clean warning.
+    # IMPORTANT: Array_* sheets may not include UNS_* metrics. Prefer aligned Demand_* sheet.
     required_cols = [
         "Used_UNS_Fallback",
         "Satisfied_Demand_units",
         "Satisfied_Demand_pct",
         "Unmet_Demand_units",
     ]
-    missing = [c for c in required_cols if c not in subset.columns]
 
-    if missing:
+    used_uns = False
+    satisfied_units = None
+    satisfied_pct = None
+    unmet_units = None
+    total_demand_units = None
+
+    # Try to fetch the corresponding row from the Demand_* sheet (same Scenario_ID if available)
+    closest_for_uns = None
+    demand_sheet = f"Demand_{selected_level}%"
+    if demand_sheet in excel_data:
+        df_demand = excel_data[demand_sheet]
+
+        scenario_id = closest.get("Scenario_ID", None) if isinstance(closest, pd.Series) else None
+        if scenario_id is not None and "Scenario_ID" in df_demand.columns:
+            match = df_demand[df_demand["Scenario_ID"] == scenario_id]
+            if not match.empty:
+                closest_for_uns = match.iloc[0]
+
+        # Fallback: re-apply filters + closest CO2 match on Demand_* sheet
+        if closest_for_uns is None:
+            demand_subset = df_demand.copy()
+
+            if "Product_weight" in demand_subset.columns and "Product_weight" in subset.columns:
+                demand_subset = demand_subset[demand_subset["Product_weight"] == weight_selected]
+
+            if "Unit_penaltycost" in demand_subset.columns and "Unit_penaltycost" in subset.columns:
+                demand_subset = demand_subset[demand_subset["Unit_penaltycost"] == penalty_selected]
+
+            service_col_d = None
+            if "Service_Level" in demand_subset.columns:
+                service_col_d = "Service_Level"
+            elif "Service Level" in demand_subset.columns:
+                service_col_d = "Service Level"
+
+            if service_col_d and "selected_service_level" in locals() and not demand_subset.empty:
+                try:
+                    demand_subset[service_col_d] = demand_subset[service_col_d].astype(float)
+                    demand_subset = demand_subset[demand_subset[service_col_d] == float(selected_service_level)]
+                except Exception:
+                    # If casting/filtering fails, keep the unfiltered demand_subset
+                    pass
+
+            # Use same CO2 column if present; otherwise detect in Demand_* sheet
+            co2_col_d = co2_col if co2_col in demand_subset.columns else None
+            if co2_col_d is None:
+                possible = [
+                    c for c in demand_subset.columns
+                    if "co2" in str(c).lower() and any(x in str(c).lower() for x in ["%", "reduction", "percent", "perc"])
+                ]
+                co2_col_d = possible[0] if possible else None
+
+            if co2_col_d and not demand_subset.empty:
+                try:
+                    idx_d = (demand_subset[co2_col_d].astype(float) - co2_pct).abs().argmin()
+                    closest_for_uns = demand_subset.iloc[idx_d]
+                except Exception:
+                    pass
+
+    if closest_for_uns is None:
+        closest_for_uns = closest
+
+    # Column check (robust to leading/trailing spaces in Excel headers)
+    _canon = lambda s: str(s).strip()
+    available_cols = set(_canon(c) for c in closest_for_uns.index)
+    missing_cols = [c for c in required_cols if _canon(c) not in available_cols]
+
+    if not missing_cols:
+        used_uns = _safe_bool(closest_for_uns.get("Used_UNS_Fallback", False), False)
+        satisfied_units = _safe_float(closest_for_uns.get("Satisfied_Demand_units", 0.0), 0.0)
+        satisfied_pct = _safe_float(closest_for_uns.get("Satisfied_Demand_pct", 1.0), 1.0)
+        unmet_units = _safe_float(closest_for_uns.get("Unmet_Demand_units", 0.0), 0.0)
+        total_demand_units = satisfied_units + unmet_units
+    elif "DemandFulfillment" in closest_for_uns.index:
+        # Fallback for older Excel outputs
+        satisfied_units = _safe_float(closest_for_uns.get("DemandFulfillment", 0.0), 0.0)
+        total_demand_units = 111000 * (selected_level / 100.0)
+        unmet_units = max(total_demand_units - satisfied_units, 0.0)
+        satisfied_pct = (satisfied_units / total_demand_units) if total_demand_units else 1.0
+    else:
         st.warning(
             "⚠️ Demand satisfaction metrics are not available in this Excel output. "
-            + "Missing columns: " + ", ".join(missing) + ". "
-            + "Please regenerate/upload results that include UNS metrics to enable demand-satisfaction warnings."
+            f"Missing columns: {', '.join(missing_cols)}. "
+            "Please regenerate/upload results that include UNS metrics to enable demand-satisfaction warnings."
         )
-    else:
-        used_uns = _safe_bool(closest.get("Used_UNS_Fallback", False), False)
-        satisfied_units = _safe_float(closest.get("Satisfied_Demand_units", 0.0), 0.0)
-        satisfied_pct = _safe_float(closest.get("Satisfied_Demand_pct", 1.0), 1.0)
-        unmet_units = _safe_float(closest.get("Unmet_Demand_units", 0.0), 0.0)
 
-        # Trigger if UNS fallback was used OR any unmet demand exists OR pct < 100%
+    if (
+        satisfied_units is not None
+        and total_demand_units is not None
+        and satisfied_pct is not None
+        and unmet_units is not None
+    ):
         if used_uns or unmet_units > 1e-6 or satisfied_pct < 0.999999:
             st.error(
-                f"⚠️ Demand not fully satisfied in the closest scenario: {satisfied_pct*100:.2f}% satisfied, "
-                f"delivered={satisfied_units:,.0f} units, unmet={unmet_units:,.0f} units."
+                f"⚠️ Demand not fully satisfied: delivered {satisfied_units:,.0f}/{total_demand_units:,.0f} units "
+                f"({satisfied_pct*100:.2f}%). Unmet: {unmet_units:,.0f} units."
             )
 
+
+# ----------------------------------------------------
     # KPI SUMMARY
     # ----------------------------------------------------
     st.subheader("📊 Closest Scenario Details")
@@ -1031,3 +1111,4 @@ def run_sc1():
     # ----------------------------------------------------
     with st.expander("📄 Show Full Data Table"):
         st.dataframe(df.head(500), use_container_width=True)
+
