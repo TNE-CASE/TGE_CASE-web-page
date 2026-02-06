@@ -10,7 +10,9 @@ import plotly.express as px
 import requests
 from io import BytesIO
 import re
-
+import os
+import sys
+from pathlib import Path
 import streamlit.components.v1 as components
 
 
@@ -208,6 +210,23 @@ def inject_big_warning_popup(title: str, lines):
         height=0,
     )
 
+def resolve_local_path(*parts: str) -> str:
+    """
+    Dev ortamında ve PyInstaller içinde çalışan, data dosyası bulucu.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    candidates = [
+        base.joinpath(*parts),                 # _MEIPASS/single_page/...
+        base.joinpath("app", *parts),          # _MEIPASS/app/single_page/...  (optimize;app kullandıysan)
+        Path(__file__).resolve().parent.joinpath(*parts),
+        Path(__file__).resolve().parent.joinpath("single_page", *parts),
+        Path.cwd().joinpath(*parts),
+        Path.cwd().joinpath("single_page", *parts),
+    ]
+    for p in candidates:
+        if p.exists():
+            return str(p)
+    return str(candidates[0])
 
 def run_sc1():
     # # ----------------------------------------------------
@@ -432,15 +451,17 @@ def run_sc1():
 # ----------------------------------------------------
     # KPI SUMMARY
     # ----------------------------------------------------
-    st.subheader("📊 Closest Scenario Details")
+    CLOSEST_SCENARIO_DETAILS = False  # Set to False to hide the closest scenario details section
+    if CLOSEST_SCENARIO_DETAILS:
+        st.subheader("📊 Closest Scenario Details")
+        
+        closest_df = closest.to_frame().T  # transpose for row→column view
+        
+        # Remove columns starting with 'f'
+        cols_to_show = [c for c in closest_df.columns if not c.lower().startswith("f")]
     
-    closest_df = closest.to_frame().T  # transpose for row→column view
-    
-    # Remove columns starting with 'f'
-    cols_to_show = [c for c in closest_df.columns if not c.lower().startswith("f")]
-    
-    # Display cleaned table
-    st.write(closest_df[cols_to_show])
+        # Display cleaned table
+        st.write(closest_df[cols_to_show])
     
     col1, col2, col3, col4 = st.columns(4)
     
