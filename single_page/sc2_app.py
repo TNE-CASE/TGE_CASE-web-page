@@ -546,7 +546,7 @@ def run_sc2():
     # ----------------------------------------------------
     # --- Display chart, outbound table, and static CO₂ table side by side ---
     
-    st.markdown("## 🏭 Production Outbound Breakdown")
+    st.markdown("## 🏭 Production Sourcing Breakdown")
     
     # --- total market demand (fixed reference) ---
     TOTAL_MARKET_DEMAND = 111000  # units
@@ -619,7 +619,7 @@ def run_sc2():
         st.plotly_chart(fig_prod, use_container_width=True)
     
     with colB:
-        st.markdown("#### 📦 Production Outbounds")
+        st.markdown("#### 📦 Production Sourcing")
         st.dataframe(df_prod.round(2), use_container_width=True)
     
     with colC:
@@ -886,10 +886,10 @@ def run_sc2():
     
     
     # Layer summaries
-    display_layer_summary("Layer 1: Plants → Cross-docks", "f1", include_road=False)
-    display_layer_summary("Layer 2a: Cross-docks → DCs", "f2", include_road=True)
-    display_layer_summary("Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
-    display_layer_summary("Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
+    display_layer_summary("Plants → Cross-docks", "f1", include_road=False)
+    display_layer_summary("Cross-docks → DCs", "f2", include_road=True)
+    display_layer_summary("New Facilities → DCs", "f2_2", include_road=True)
+    display_layer_summary("DCs → Retailer Hubs", "f3", include_road=True)
     
     # ----------------------------------------------------
     # 💰🌿 COST & EMISSION DISTRIBUTION SECTION (FINAL)
