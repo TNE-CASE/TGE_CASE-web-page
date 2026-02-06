@@ -10,6 +10,9 @@ import plotly.express as px
 import requests
 from io import BytesIO
 import openpyxl
+import os
+import sys
+from pathlib import Path
 import streamlit.components.v1 as components
 
 
@@ -127,6 +130,23 @@ def inject_big_warning_popup(*, title: str, subtitle: str, details_html: str, to
 </script>
 """, height=0)
 
+def resolve_local_path(*parts: str) -> str:
+    """
+    Dev ortamında ve PyInstaller içinde çalışan, data dosyası bulucu.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    candidates = [
+        base.joinpath(*parts),                 # _MEIPASS/single_page/...
+        base.joinpath("app", *parts),          # _MEIPASS/app/single_page/...  (optimize;app kullandıysan)
+        Path(__file__).resolve().parent.joinpath(*parts),
+        Path(__file__).resolve().parent.joinpath("single_page", *parts),
+        Path.cwd().joinpath(*parts),
+        Path.cwd().joinpath("single_page", *parts),
+    ]
+    for p in candidates:
+        if p.exists():
+            return str(p)
+    return str(candidates[0])
 
 def run_sc2():
     # # ----------------------------------------------------
@@ -162,7 +182,7 @@ def run_sc2():
         """Fallback GitHub loader (for hosted dashboard)."""
         response = requests.get(url)
         response.raise_for_status()
-        return pd.read_excel(BytesIO(response.content), sheet_name="Summary")
+        return pd.read_excel(BytesIO(response.content))
     
     
     
@@ -179,7 +199,8 @@ def run_sc2():
     # ----------------------------------------------------
     st.sidebar.header("📦 Demand Level (%)")
     
-    LOCAL_XLSX_PATH = "simulation_results_demand_levelsSC2.xlsx"
+    LOCAL_XLSX_PATH = resolve_local_path("single_page", "simulation_results_demand_levelsSC2.xlsx")
+
     available_sheets = get_sheet_names(LOCAL_XLSX_PATH)
     
     # Auto-detect demand-level sheets (contain % or “Demand”)
