@@ -120,17 +120,17 @@ else:
     st.title("Supply Chain Suite")
     st.markdown(
         """
-        **Case synopsis (short):** We study a global consumer electronics supply chain with four layers:  
-        **manufacturers → cross-docks → distribution centers → retailer hubs → local customers**.
+        **Case synopsis :** We study a global supply chain with four layers:  
+        **Manufacturers (Taiwan & Shanghai) → Cross-docks ( or European Manufacturers) → Distribution Centers → Retailer Hubs → Local Customers**.
 
         **Get started:** use the **left Navigation** to open a page.
         - **Factory Model (SC1 / SC2):** inspect the network structure and facilities.
         - **Optimization Dashboard:** run scenarios and compare **cost vs CO₂** (maps, flow breakdowns, and distributions).
 
         **Inside the Optimization Dashboard:**
-        - **🧩 Puzzle Mode:** manually build a feasible network (activate sites, set mode shares, allocate production) and see **feasibility warnings + cost/CO₂ implications** (no black-box optimization).
-        - **Scenario 1:** optimize within the **current network structure** by changing key “knobs” (e.g., **CO₂ target**).
-        - **Scenario 2:** allow **structural change via local (EU) production** (open European facilities with fixed costs/capacity and different production emissions) and evaluate trade-offs.
+        - **🧩 Puzzle Mode:** Manually build a feasible network (activate sites, set mode shares, allocate production) and see **feasibility warnings + cost/CO₂ implications**.
+        - **Scenario 1:** Optimize within the **current network structure** by changing key “knobs” (e.g., **CO₂ target**).
+        - **Scenario 2:** Allow **structural change via local (EU) production** (open European facilities with fixed costs/capacity and different production emissions) and evaluate trade-offs.
         """
     )
     st.stop()
