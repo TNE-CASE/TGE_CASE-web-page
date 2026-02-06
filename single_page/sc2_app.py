@@ -444,15 +444,18 @@ def run_sc2():
     # ----------------------------------------------------
     # KPI VIEW
     # ----------------------------------------------------
-    st.subheader("📊 Closest Scenario Details")
-    # Hide any column starting with 'f' (case-insensitive)
-    closest_df = closest.to_frame().T  # transpose for row→column view
+    CLOSEST_SCENARIO_DETAILS = False  # Set to False to hide the closest scenario details section
     
-    # Remove columns starting with 'f'
-    cols_to_show = [c for c in closest_df.columns if not (c.lower().startswith("f") or c.lower().startswith("scenario_id"))]
+    if CLOSEST_SCENARIO_DETAILS:
+        st.subheader("📊 Closest Scenario Details")
+        # Hide any column starting with 'f' (case-insensitive)
+        closest_df = closest.to_frame().T  # transpose for row→column view
+        
+        # Remove columns starting with 'f'
+        cols_to_show = [c for c in closest_df.columns if not (c.lower().startswith("f") or c.lower().startswith("scenario_id"))]
     
-    # Display cleaned table
-    st.write(closest_df[cols_to_show].applymap(format_number))
+        # Display cleaned table
+        st.write(closest_df[cols_to_show].applymap(format_number))
     
     col1, col2, col3, col4 = st.columns(4)
     
