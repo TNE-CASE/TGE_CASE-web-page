@@ -117,7 +117,22 @@ elif opt_choice == "Optimization Dashboard":
     pass  # Continue into optimization block below
 
 else:
-    st.write("👈 Select a page from the Navigation menu.")
+    st.title("Supply Chain Suite")
+    st.markdown(
+        """
+        **Case synopsis (short):** We study a global consumer electronics supply chain with four layers:  
+        **manufacturers → cross-docks → distribution centers → retailer hubs → local customers**.
+
+        **Get started:** use the **left Navigation** to open a page.
+        - **Factory Model (SC1 / SC2):** inspect the network structure and facilities.
+        - **Optimization Dashboard:** run scenarios and compare **cost vs CO₂** (maps, flow breakdowns, and distributions).
+
+        **Inside the Optimization Dashboard:**
+        - **🧩 Puzzle Mode:** manually build a feasible network (activate sites, set mode shares, allocate production) and see **feasibility warnings + cost/CO₂ implications** (no black-box optimization).
+        - **Scenario 1:** optimize within the **current network structure** by changing key “knobs” (e.g., **CO₂ target**).
+        - **Scenario 2:** allow **structural change via local (EU) production** (open European facilities with fixed costs/capacity and different production emissions) and evaluate trade-offs.
+        """
+    )
     st.stop()
 
 # ================================================================
@@ -212,7 +227,7 @@ CITY_TO_KEYS = {
     "Pardubice": ["Pardubice"],
     "Calais": ["Calais"],
     "Riga": ["Riga"],
-    "LaGomera": ["LaGomera"],
+    "Algeciras": ["Algeciras"],
 
     # Retailers 
     "Cologne": ["Cologne"],
@@ -276,8 +291,8 @@ def _safe_float(x, default=0.0):
 
 
 def sum_flows_by_mode_model(model, prefix: str):
-    """Sum air/sea/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
-    totals = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    """Sum air/Water/road units for a given flow prefix like 'f1', 'f2', 'f2_2', or 'f3' from model."""
+    totals = {"air": 0.0, "Water": 0.0, "road": 0.0}
     if model is None:
         return totals
 
@@ -299,7 +314,7 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
     totals = sum_flows_by_mode_model(model, prefix)
     st.markdown(f"### {title}")
     cols = st.columns(3 if include_road else 2)
-    cols[0].metric("🚢 Sea", f"{totals['sea']:,.0f} units")
+    cols[0].metric("🚢 Water", f"{totals['Water']:,.0f} units")
     cols[1].metric("✈️ Air", f"{totals['air']:,.0f} units")
     if include_road:
         cols[2].metric("🚛 Road", f"{totals['road']:,.0f} units")
@@ -401,22 +416,22 @@ def render_cost_emission_distribution(results: dict):
         st.subheader("Emission Distribution")
 
         e_air = _safe_float(results.get("E_air", results.get("E_Air", 0)))
-        e_sea = _safe_float(results.get("E_sea", results.get("E_Sea", 0)))
+        e_Water = _safe_float(results.get("E_Water", results.get("E_Water", 0)))
         e_road = _safe_float(results.get("E_road", results.get("E_Road", 0)))
         e_last = _safe_float(results.get("E_lastmile", results.get("E_Last-mile", results.get("E_last_mile", 0))))
         e_total = _safe_float(results.get("CO2_Total", results.get("Total Emissions", 0)))
 
         e_prod = _safe_float(results.get("E_production", results.get("E_Production", 0)))
         if e_prod <= 0 and e_total > 0:
-            e_prod = max(e_total - e_air - e_sea - e_road - e_last, 0.0)
+            e_prod = max(e_total - e_air - e_Water - e_road - e_last, 0.0)
 
-        total_transport = e_air + e_sea + e_road
+        total_transport = e_air + e_Water + e_road
 
         emission_data = {
             "Production": e_prod,
             "Last-mile": e_last,
             "Air": e_air,
-            "Sea": e_sea,
+            "Water": e_Water,
             "Road": e_road,
             "Total Transport": total_transport,
         }
@@ -472,12 +487,12 @@ def _puzzle_defaults():
 
     plants_all = ["Taiwan", "Shanghai"]
     crossdocks_all = ["Vienna", "Gdansk", "Paris"]
-    dcs_all = ["Pardubice", "Calais", "Riga", "LaGomera"]
+    dcs_all = ["Pardubice", "Calais", "Riga", "Algeciras"]
     new_locs_all = ["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"]
 
-    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "LaGomera": 100000}
+    dc_capacity = {"Pardubice": 45000, "Calais": 150000, "Riga": 75000, "Algeciras": 100000}
     handling_dc = {"Pardubice": 4.768269231, "Calais": 5.675923077,
-                   "Riga": 4.426038462, "LaGomera": 7.0865}
+                   "Riga": 4.426038462, "Algeciras": 7.0865}
     handling_crossdock = {"Vienna": 6.533884615, "Gdansk": 4.302269231, "Paris": 5.675923077}
 
     sourcing_cost = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
@@ -492,10 +507,10 @@ def _puzzle_defaults():
     new_loc_CO2 = {"Budapest": 3.2, "Prague": 2.8, "Cork": 4.6, "Helsinki": 5.8, "Warsaw": 6.2}
 
     # Transport emission factor (ton CO2 per ton-km)
-    co2_emission_factor = {"air": 0.000971, "sea": 0.000027, "road": 0.000076}
+    co2_emission_factor = {"air": 0.000971, "Water": 0.000027, "road": 0.000076}
 
     # Per-mode transport cost (€/kg-km)
-    tau = {"air": 0.0105, "sea": 0.0013, "road": 0.0054}
+    tau = {"air": 0.0105, "Water": 0.0013, "road": 0.0054}
     unit_inventory_holdingCost = 0.85
     unit_penaltycost = 1.7
 
@@ -511,7 +526,7 @@ def _puzzle_defaults():
          [519.161031102087, 1154.87176862626, 440.338211856603, 1855.94939751482],
          [962.668288266132, 149.819604703365, 1675.455462176, 2091.1437090641]],
         index=["Vienna", "Gdansk", "Paris"],
-        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "Algeciras"],
     )
     dist2_new = pd.DataFrame(
         [[367.762425639798, 1216.10262027458, 1098.57245368619, 1120.13248546123],
@@ -520,14 +535,14 @@ def _puzzle_defaults():
          [1265.72892702748, 1758.18103997611, 367.698822815676, 2461.59771450036],
          [437.686419974076, 1271.77800922148, 554.373376462774, 1592.14058614186]],
         index=["Budapest", "Prague", "Cork", "Helsinki", "Warsaw"],
-        columns=["Pardubice", "Calais", "Riga", "LaGomera"],
+        columns=["Pardubice", "Calais", "Riga", "Algeciras"],
     )
     dist3 = pd.DataFrame(
         [[1184.65051865833, 933.730015948432, 557.144058480586, 769.757089072695, 2147.98445345001, 2315.79621115423, 1590.07662902924],
          [311.994969562194, 172.326685809878, 622.433010022067, 1497.40239816531, 1387.73696467636, 1585.6370207201, 1984.31926933368],
          [1702.34810062205, 1664.62283033352, 942.985120680279, 222.318687415142, 2939.50970842422, 3128.54724287652, 713.715034612432],
          [2452.23922908608, 2048.41487682505, 2022.91355628344, 1874.11994156457, 2774.73634842816, 2848.65086298747, 2806.05576441898]],
-        index=["Pardubice", "Calais", "Riga", "LaGomera"],
+        index=["Pardubice", "Calais", "Riga", "Algeciras"],
         columns=list(demand.keys()),
     )
 
@@ -570,16 +585,16 @@ def _normalize_shares(raw: dict) -> dict:
 def _lt_ss_table(service_level: float, demand: dict, unit_h: float, unit_penaltycost: float):
     """Build a small table for LT, SS(€/unit) per mode, aligned with MASTER's logic."""
     average_distance = 9600
-    speed = {"air": 800, "sea": 10, "road": 40}
+    speed = {"air": 800, "Water": 10, "road": 40}
     std_demand = float(np.std(list(demand.values()))) if demand else 0.0
-    modes = ["air", "sea", "road"]
+    modes = ["air", "Water", "road"]
 
     lt = {}
     z = {}
     phi = {}
     ss = {}
     for m in modes:
-        mult = 1.2 if m == "sea" else 1.0
+        mult = 1.2 if m == "Water" else 1.0
         lt[m] = float(np.round((average_distance * mult) / (speed[m] * 24), 13))
         z[m] = float(norm.ppf(service_level))
         phi[m] = float(norm.pdf(z[m]))
@@ -628,76 +643,89 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     fulfill_pct = 1.0  # Demand fulfillment slider removed; assume 100%
     total_units = total_demand * max(0.0, min(1.0, fulfill_pct))
 
-    # Production split Layer1 vs Layer2
-    share_L1_total = float(sel.get("share_L1_total", 1.0))
-    share_L1_total = max(0.0, min(1.0, share_L1_total))
-    share_L2_total = 1.0 - share_L1_total
+    # Production split across production facilities
+    prod_source_shares = sel.get("prod_source_shares", None)
 
-    prod_L1_total = total_units * share_L1_total
-    prod_L2_total = total_units * share_L2_total
+    if isinstance(prod_source_shares, dict) and len(prod_source_shares) > 0:
+        # New Puzzle UI: user allocates a single share vector across ALL active production sites.
+        active_sources = list(plants) + list(new_locs)
+        shares = {k: float(prod_source_shares.get(k, 0.0)) for k in active_sources}
+        shares = _normalize_shares(shares)
 
-    # Per-site shares
-    plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
-    plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
-    plant_shares = _normalize_shares(plant_shares)
+        prod_by_source = {k: total_units * shares.get(k, 0.0) for k in active_sources}
+        plant_prod = {p: prod_by_source.get(p, 0.0) for p in plants}
+        new_prod = {n: prod_by_source.get(n, 0.0) for n in new_locs}
 
-    new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
-    if new_locs:
-        new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
-        new_shares = _normalize_shares(new_shares)
+    else:
+        # Backward-compatible: old UI (Layer 1 share + separate normalization per layer)
+        share_L1_total = float(sel.get("share_L1_total", 1.0))
+        share_L1_total = max(0.0, min(1.0, share_L1_total))
+        share_L2_total = 1.0 - share_L1_total
 
-    plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
-    new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
+        prod_L1_total = total_units * share_L1_total
+        prod_L2_total = total_units * share_L2_total
 
+        # Per-site shares
+        plant_shares = _normalize_shares(sel.get("plant_shares", {p: 1.0 for p in plants}))
+        plant_shares = {p: plant_shares.get(p, 0.0) for p in plants}
+        plant_shares = _normalize_shares(plant_shares)
+
+        new_shares = _normalize_shares(sel.get("new_shares", {n: 1.0 for n in new_locs})) if new_locs else {}
+        if new_locs:
+            new_shares = {n: new_shares.get(n, 0.0) for n in new_locs}
+            new_shares = _normalize_shares(new_shares)
+
+        plant_prod = {p: prod_L1_total * plant_shares[p] for p in plants}
+        new_prod = {n: (prod_L2_total * new_shares[n] if n in new_shares else 0.0) for n in new_locs}
     # Mode shares (apply scenario blocks)
     l1_mode_share_by_plant = sel.get("l1_mode_share_by_plant", {})
     l2_mode_share_by_origin = sel.get("l2_mode_share_by_origin", {})
     l3_mode_share_by_dc = sel.get("l3_mode_share_by_dc", {})
 
     def _l1_modes(p):
-        sea = float(l1_mode_share_by_plant.get(p, {}).get("sea", 0.5))
-        sea = max(0.0, min(1.0, sea))
-        air = 1.0 - sea
+        Water = float(l1_mode_share_by_plant.get(p, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        air = 1.0 - Water
         if scen.get("suez_canal", False):
-            sea = 0.0
+            Water = 0.0
             air = 1.0
         if scen.get("volcano", False):
             air = 0.0
-            sea = 1.0
-        return {"air": air, "sea": sea}
+            Water = 1.0
+        return {"air": air, "Water": Water}
 
     def _l2_modes(o):
-        sea = float(l2_mode_share_by_origin.get(o, {}).get("sea", 0.5))
-        sea = max(0.0, min(1.0, sea))
-        rem = 1.0 - sea
+        Water = float(l2_mode_share_by_origin.get(o, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        rem = 1.0 - Water
         air = float(l2_mode_share_by_origin.get(o, {}).get("air", min(0.5, rem)))
         air = max(0.0, min(rem, air))
-        road = max(0.0, 1.0 - sea - air)
+        road = max(0.0, 1.0 - Water - air)
         if scen.get("volcano", False):
-            # remove air; re-normalize sea/road
+            # remove air; re-normalize Water/road
             air = 0.0
-            s2 = sea + road
+            s2 = Water + road
             if s2 <= 1e-12:
-                sea, road = 1.0, 0.0
+                Water, road = 1.0, 0.0
             else:
-                sea, road = sea / s2, road / s2
-        return {"air": air, "sea": sea, "road": road}
+                Water, road = Water / s2, road / s2
+        return {"air": air, "Water": Water, "road": road}
 
     def _l3_modes(d):
-        sea = float(l3_mode_share_by_dc.get(d, {}).get("sea", 0.5))
-        sea = max(0.0, min(1.0, sea))
-        rem = 1.0 - sea
+        Water = float(l3_mode_share_by_dc.get(d, {}).get("Water", 0.5))
+        Water = max(0.0, min(1.0, Water))
+        rem = 1.0 - Water
         air = float(l3_mode_share_by_dc.get(d, {}).get("air", min(0.25, rem)))
         air = max(0.0, min(rem, air))
-        road = max(0.0, 1.0 - sea - air)
+        road = max(0.0, 1.0 - Water - air)
         if scen.get("volcano", False):
             air = 0.0
-            s2 = sea + road
+            s2 = Water + road
             if s2 <= 1e-12:
-                sea, road = 1.0, 0.0
+                Water, road = 1.0, 0.0
             else:
-                sea, road = sea / s2, road / s2
-        return {"air": air, "sea": sea, "road": road}
+                Water, road = Water / s2, road / s2
+        return {"air": air, "Water": Water, "road": road}
 
     # Distances restricted to active nodes
     dist1 = cfg["dist1"].reindex(index=plants, columns=crossdocks)
@@ -714,22 +742,22 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
 
     # Flows (store per-layer per-mode totals)
     flows = {
-        "L1": {"air": 0.0, "sea": 0.0},
-        "L2": {"air": 0.0, "sea": 0.0, "road": 0.0},
-        "L2_new": {"air": 0.0, "sea": 0.0, "road": 0.0},
-        "L3": {"air": 0.0, "sea": 0.0, "road": 0.0},
+        "L1": {"air": 0.0, "Water": 0.0},
+        "L2": {"air": 0.0, "Water": 0.0, "road": 0.0},
+        "L2_new": {"air": 0.0, "Water": 0.0, "road": 0.0},
+        "L3": {"air": 0.0, "Water": 0.0, "road": 0.0},
     }
 
     # --- Layer 1: Plants -> Crossdocks (equal split over crossdocks)
     transport_L1 = 0.0
     inv_L1 = 0.0
     sourcing_L1 = 0.0
-    co2_tr_L1 = {"air": 0.0, "sea": 0.0}
+    co2_tr_L1 = {"air": 0.0, "Water": 0.0}
     for p in plants:
         mshare = _l1_modes(p)
         for c in crossdocks:
             base = plant_prod[p] / float(len(crossdocks))
-            for mo in ["air", "sea"]:
+            for mo in ["air", "Water"]:
                 q = base * mshare[mo]
                 flows["L1"][mo] += q
                 d_km = float(dist1.loc[p, c])
@@ -742,7 +770,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     transport_L2 = 0.0
     inv_L2 = 0.0
     handling_L2 = 0.0
-    co2_tr_L2 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    co2_tr_L2 = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     # Crossdock inflow from L1 is equal split across crossdocks by construction
     total_L1 = sum(plant_prod.values())
@@ -752,7 +780,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         mshare = _l2_modes(c)
         for d in dcs:
             base = cd_inflow[c] / float(len(dcs))
-            for mo in ["air", "sea", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L2"][mo] += q
                 d_km = float(dist2.loc[c, d])
@@ -766,7 +794,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     inv_L2_new = 0.0
     cost_new_var = 0.0
     cost_new_fixed = 0.0
-    co2_tr_L2_new = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    co2_tr_L2_new = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     for n in new_locs:
         if new_prod.get(n, 0.0) <= 1e-9:
@@ -775,7 +803,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         cost_new_fixed += cfg["new_loc_openingCost"].get(n, 0.0)  # open if used
         for d in dcs:
             base = new_prod[n] / float(len(dcs))
-            for mo in ["air", "sea", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L2_new"][mo] += q
                 d_km = float(dist2_new.loc[n, d])
@@ -789,14 +817,14 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     inv_L3 = 0.0
     handling_L3 = 0.0
     lastmile_cost = 0.0
-    co2_tr_L3 = {"air": 0.0, "sea": 0.0, "road": 0.0}
+    co2_tr_L3 = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     for d in dcs:
         mshare = _l3_modes(d)
         for r, dem in demand.items():
             dem_eff = float(dem) * (total_units / total_demand_safe)
             base = dem_eff / float(len(dcs))
-            for mo in ["air", "sea", "road"]:
+            for mo in ["air", "Water", "road"]:
                 q = base * mshare[mo]
                 flows["L3"][mo] += q
                 d_km = float(dist3.loc[d, r])
@@ -816,12 +844,12 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         co2_prod_new_ton += (cfg["new_loc_CO2"].get(n, 0.0) / 1000.0) * new_prod.get(n, 0.0)
 
     co2_tr_air = co2_tr_L1["air"] + co2_tr_L2["air"] + co2_tr_L2_new["air"] + co2_tr_L3["air"]
-    co2_tr_sea = co2_tr_L1["sea"] + co2_tr_L2["sea"] + co2_tr_L2_new["sea"] + co2_tr_L3["sea"]
+    co2_tr_Water = co2_tr_L1["Water"] + co2_tr_L2["Water"] + co2_tr_L2_new["Water"] + co2_tr_L3["Water"]
     co2_tr_road = co2_tr_L2["road"] + co2_tr_L2_new["road"] + co2_tr_L3["road"]
 
     co2_lastmile_ton = (lastmile_CO2_kg / 1000.0) * total_units
     co2_prod_ton = co2_prod_existing_ton + co2_prod_new_ton
-    co2_total = co2_prod_ton + co2_tr_air + co2_tr_sea + co2_tr_road + co2_lastmile_ton
+    co2_total = co2_prod_ton + co2_tr_air + co2_tr_Water + co2_tr_road + co2_lastmile_ton
 
     # CO2 cost (manufacturing only, MASTER-style)
     co2_cost_per_ton = float(sel.get("co2_cost_per_ton", 37.5))
@@ -865,7 +893,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         "CO2_Manufacturing_State1": co2_cost_existing,
         "CO2_Cost_L2_2": co2_cost_new,
         "E_air": co2_tr_air,
-        "E_sea": co2_tr_sea,
+        "E_Water": co2_tr_Water,
         "E_road": co2_tr_road,
         "E_lastmile": co2_lastmile_ton,
         "E_production": co2_prod_ton,
@@ -895,27 +923,44 @@ def _render_puzzle_mode():
     cfg = _puzzle_defaults()
 
     # Scenario events (optional)
-    # Scenario events have been removed for simplicity
-    
     st.markdown("#### Scenario events")
-    col_ev1, col_ev2 = st.columns(2)
-    with col_ev1:
-        suez = st.checkbox("Suez Canal Blockade (forces L1 sea=0)", value=False, key="pz_suez")
-        oil = st.checkbox("Oil Crisis (transport cost ×1.3)", value=False, key="pz_oil")
-    with col_ev2:
-        volcano = st.checkbox("Volcanic Eruption (no air)", value=False, key="pz_volcano")
-        trade = st.checkbox("Trade War (plant sourcing × tariff)", value=False, key="pz_trade")
-    tariff = 1.0
-    if trade:
-        tariff = st.slider("Tariff multiplier on plant sourcing", 1.0, 2.0, 1.3, 0.05, key="pz_tariff")
 
-    scen = {
-        "suez_canal": suez,
-        "oil_crises": oil,
-        "volcano": volcano,
-        "trade_war": trade,
-        "tariff_rate": tariff,
-    }
+    # On/Off switch to show/hide scenario events and to apply them in computations.
+    # When OFF, all scenario flags are forced to False (even if previously selected).
+    try:
+        enable_events = st.toggle("Enable scenario events", value=False, key="pz_enable_events")
+    except Exception:
+        enable_events = st.checkbox("Enable scenario events", value=False, key="pz_enable_events")
+
+    if enable_events:
+        col_ev1, col_ev2 = st.columns(2)
+        with col_ev1:
+            suez = st.checkbox("Suez Canal Blockade (forces L1 Water=0)", value=False, key="pz_suez")
+            oil = st.checkbox("Oil Crisis (transport cost ×1.3)", value=False, key="pz_oil")
+        with col_ev2:
+            volcano = st.checkbox("Volcanic Eruption (no air)", value=False, key="pz_volcano")
+            trade = st.checkbox("Trade War (plant sourcing × tariff)", value=False, key="pz_trade")
+
+        tariff = 1.0
+        if trade:
+            tariff = st.slider("Tariff multiplier on plant sourcing", 1.0, 2.0, 1.3, 0.05, key="pz_tariff")
+
+        scen = {
+            "suez_canal": suez,
+            "oil_crises": oil,
+            "volcano": volcano,
+            "trade_war": trade,
+            "tariff_rate": tariff,
+        }
+    else:
+        st.caption("Scenario events are OFF.")
+        scen = {
+            "suez_canal": False,
+            "oil_crises": False,
+            "volcano": False,
+            "trade_war": False,
+            "tariff_rate": 1.0,
+        }
 
     # Node selections
     st.markdown("#### Facility selection")
@@ -936,63 +981,135 @@ def _render_puzzle_mode():
     total_demand = int(sum(cfg["demand"].values()))
     st.info(f"Total demand (units): **{total_demand:,}**")
 
+
+    # ------------------------------------------------------------
+    # UI helper: non-editable slider for computed/fixed percentages
+    # ------------------------------------------------------------
+    def _fixed_slider(label: str, value_pct: int, key: str):
+        """Render a disabled slider (if supported) and force its value to follow `value_pct`.
+
+        Streamlit widgets with a `key` keep their state across reruns. For computed values
+        (like remainders), we must overwrite `st.session_state[key]` on every rerun, otherwise
+        the widget may display a stale cached value.
+        """
+        value_pct = int(max(0, min(100, value_pct)))
+        st.session_state[key] = value_pct
+        try:
+            st.slider(label, 0, 100, value_pct, 1, key=key, disabled=True)
+        except TypeError:
+            # Older Streamlit versions may not support `disabled=` on sliders.
+            st.markdown(f"{label}: **{value_pct}%** (fixed)")
+
     st.markdown("#### Production split")
-    share_L1 = st.slider("Share produced in Layer 1 plants (%)", 0, 100, 70, 1, key="pz_share_l1") / 100.0
+    st.caption(
+        "Set production shares across **all selected production facilities**. "
+        "The total is forced to **100%** (the last facility is auto-completed)."
+    )
 
-    st.caption("Layer 1: split across selected plants (we normalize automatically)")
-    plant_shares_raw = {}
-    for p in (plants or cfg["plants_all"]):
-        plant_shares_raw[p] = st.slider(f"{p} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_pl_{p}")
+    # Production sources = Layer 1 plants + selected new production facilities (Layer 2)
+    prod_sources = list(plants or cfg["plants_all"]) + list(new_locs)
+    if len(prod_sources) == 0:
+        prod_sources = list(cfg["plants_all"])
 
-    if new_locs:
-        st.caption("Layer 2: split across selected new facilities (we normalize automatically)")
-        new_shares_raw = {}
-        for n in new_locs:
-            new_shares_raw[n] = st.slider(f"{n} weight", 0.0, 1.0, 0.5, 0.01, key=f"pz_w_new_{n}")
-    else:
-        new_shares_raw = {}
+    prod_share_pct_by_source = {}
+    remaining_pct = 100
 
+    # Editable sliders for first N-1 sources (bounded by remaining), last one is fixed remainder.
+    for i, src in enumerate(prod_sources):
+        if i < len(prod_sources) - 1:
+            k = f"pz_prod_share_pct_{src}"
+            # default: equal split
+            if k not in st.session_state:
+                st.session_state[k] = int(round(100 / max(len(prod_sources), 1)))
+
+            # clamp to current remaining to avoid Streamlit 'value out of range' errors
+            st.session_state[k] = int(max(0, min(int(st.session_state[k]), int(remaining_pct))))
+
+            pct = st.slider(
+                f"{src} share (%)",
+                min_value=0,
+                max_value=int(remaining_pct),
+                value=int(st.session_state[k]),
+                step=1,
+                key=k,
+            )
+            prod_share_pct_by_source[src] = int(pct)
+            remaining_pct -= int(pct)
+        else:
+            # Auto-complete the last one to reach 100%
+            pct = int(max(0, min(100, remaining_pct)))
+            _fixed_slider(f"{src} share (%)", pct, key=f"pz_prod_share_pct_fixed_{src}")
+            prod_share_pct_by_source[src] = int(pct)
+
+    # Summary: show a 'total bar' at the bottom
+    auto_pct = int(prod_share_pct_by_source.get(prod_sources[-1], 0))
+    manual_pct = 100 - auto_pct
+    st.caption(f"Manual sliders total: **{manual_pct}%**  •  Auto remainder: **{auto_pct}%**")
+    st.progress(min(max(manual_pct / 100.0, 0.0), 1.0))
+    _fixed_slider("Total share (%)", 100, key="pz_prod_total_fixed")
+
+    # Convert to fractions for the solver-free puzzle computation
+    prod_source_shares = {k: float(v) / 100.0 for k, v in prod_share_pct_by_source.items()}
     st.markdown("#### Transport mode shares")
-    st.caption("Defaults: L1 sea=50% (air remainder), L2 sea=50% & air=50% (road remainder), L3 sea=50% & air=25% (road remainder). Shares are set in **percent (%).**")
+    st.caption("Defaults: L1 Water=50% (air remainder), L2 Water=50% & air=50% (road remainder), L3 Water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
     st.markdown("**Layer 1 (Plant → Cross-dock)**")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
-        sea_pct = st.slider(f"{p} – Sea share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_sea_{p}")
-        sea = float(sea_pct) / 100.0
-        l1_mode_share_by_plant[p] = {"sea": float(sea)}
+        Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
+
+        # Auto remainder (non-editable): Air = 100% - Water
+        air_pct = 100 - int(Water_pct)
+        _fixed_slider(f"{p} – Air share (L1) (%)", air_pct, key=f"pz_l1_air_fixed_{p}")
+
+        Water = float(Water_pct) / 100.0
+        l1_mode_share_by_plant[p] = {"Water": float(Water)}
 
     st.markdown("**Layer 2 (Cross-dock / New → DC)**")
     l2_mode_share_by_origin = {}
     for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
         with st.expander(f"{o}", expanded=False):
-            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l2_sea_{o}")
-            rem_pct = 100 - int(sea_pct)
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l2_Water_{o}")
+            rem_pct = 100 - int(Water_pct)
+
+            # Editable within remainder
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l2_air_fixed_{o}")
             else:
                 air_default_pct = min(50, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l2_air_{o}")
-            sea = float(sea_pct) / 100.0
+
+            # Auto remainder (non-editable): Road = 100% - Water - Air
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l2_road_fixed_{o}")
+
+            Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l2_mode_share_by_origin[o] = {"sea": float(sea), "air": float(air)}
+            l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
     st.markdown("**Layer 3 (DC → Retailer)**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
-            sea_pct = st.slider("Sea share (%)", 0, 100, 50, 1, key=f"pz_l3_sea_{d}")
-            rem_pct = 100 - int(sea_pct)
+            Water_pct = st.slider("Water share (%)", 0, 100, 50, 1, key=f"pz_l3_Water_{d}")
+            rem_pct = 100 - int(Water_pct)
+
+            # Editable within remainder
             if rem_pct <= 0:
                 air_pct = 0
-                st.write("Air share (%): **0%** (fixed because Sea is 100%)")
+                _fixed_slider("Air share (%)", 0, key=f"pz_l3_air_fixed_{d}")
             else:
                 air_default_pct = min(25, rem_pct)
                 air_pct = st.slider("Air share (%)", 0, int(rem_pct), int(air_default_pct), 1, key=f"pz_l3_air_{d}")
-            sea = float(sea_pct) / 100.0
+
+            # Auto remainder (non-editable): Road = 100% - Water - Air
+            road_pct = max(0, 100 - int(Water_pct) - int(air_pct))
+            _fixed_slider("Road share (%)", int(road_pct), key=f"pz_l3_road_fixed_{d}")
+
+            Water = float(Water_pct) / 100.0
             air = float(air_pct) / 100.0
-            l3_mode_share_by_dc[d] = {"sea": float(sea), "air": float(air)}
+            l3_mode_share_by_dc[d] = {"Water": float(Water), "air": float(air)}
     # Prices are fixed to default MASTER values in Puzzle Mode (no user inputs).
     # Demand fulfillment slider was removed; we assume 100% fulfillment in computations.
     sel = {
@@ -1000,9 +1117,7 @@ def _render_puzzle_mode():
         "crossdocks": crossdocks,
         "dcs": dcs,
         "new_locs": new_locs,
-        "share_L1_total": share_L1,
-        "plant_shares": plant_shares_raw,
-        "new_shares": new_shares_raw,
+        "prod_source_shares": prod_source_shares,
         "l1_mode_share_by_plant": l1_mode_share_by_plant,
         "l2_mode_share_by_origin": l2_mode_share_by_origin,
         "l3_mode_share_by_dc": l3_mode_share_by_dc,
@@ -1081,7 +1196,7 @@ def _render_puzzle_mode():
         st.subheader("🌿 CO₂ Emissions")
         st.json({
             "Air": results.get("E_air", 0),
-            "Sea": results.get("E_sea", 0),
+            "Water": results.get("E_Water", 0),
             "Road": results.get("E_road", 0),
             "Last-mile": results.get("E_lastmile", 0),
             "Production": results.get("E_production", 0),
@@ -1104,7 +1219,7 @@ def _render_puzzle_mode():
             ("DC", 50.040750, 15.776590, "Pardubice"),
             ("DC", 50.954468, 1.862801, "Calais"),
             ("DC", 56.946285, 24.105078, "Riga"),
-            ("DC", 28.116667, -17.216667, "LaGomera"),
+            ("DC", 36.168056, -5.348611, "Algeciras"),
             ("Retail", 50.935173, 6.953101, "Cologne"),
             ("Retail", 51.219890, 4.403460, "Antwerp"),
             ("Retail", 50.061430, 19.936580, "Krakow"),
@@ -1295,21 +1410,21 @@ def _render_puzzle_mode():
         with cL1:
             st.caption("Layer 1")
             st.metric("✈️ Air", f"{flows['L1']['air']:,.0f}")
-            st.metric("🚢 Sea", f"{flows['L1']['sea']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L1']['Water']:,.0f}")
         with cL2:
             st.caption("Layer 2")
             st.metric("✈️ Air", f"{flows['L2']['air']:,.0f}")
-            st.metric("🚢 Sea", f"{flows['L2']['sea']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L2']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2']['road']:,.0f}")
         with cL2n:
             st.caption("Layer 2 (new)")
             st.metric("✈️ Air", f"{flows['L2_new']['air']:,.0f}")
-            st.metric("🚢 Sea", f"{flows['L2_new']['sea']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L2_new']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2_new']['road']:,.0f}")
         with cL3:
             st.caption("Layer 3")
             st.metric("✈️ Air", f"{flows['L3']['air']:,.0f}")
-            st.metric("🚢 Sea", f"{flows['L3']['sea']:,.0f}")
+            st.metric("🚢 Water", f"{flows['L3']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L3']['road']:,.0f}")
 
         # Cost + emission distributions (reuse existing renderer)
@@ -1318,7 +1433,10 @@ def _render_puzzle_mode():
     # ------------------------------------------------------------
     # 📤 Puzzle submission (email + solution details -> SharePoint Excel)
     # ------------------------------------------------------------
-    if "pz_last_results" in st.session_state:
+    # Code-only toggle: set True to enable the submission UI (kept OFF by default).
+    ENABLE_PUZZLE_SUBMISSION = False
+
+    if ENABLE_PUZZLE_SUBMISSION and "pz_last_results" in st.session_state:
         st.markdown("---")
         st.subheader("📤 Submit your solution")
         st.caption(
@@ -1368,7 +1486,7 @@ def _render_puzzle_mode():
                     "Objective_value": float(results.get("Objective_value", 0.0)),
                     "CO2_Total": float(results.get("CO2_Total", 0.0)),
                     "E_air": float(results.get("E_air", 0.0)),
-                    "E_sea": float(results.get("E_sea", 0.0)),
+                    "E_Water": float(results.get("E_Water", 0.0)),
                     "E_road": float(results.get("E_road", 0.0)),
                     "E_lastmile": float(results.get("E_lastmile", 0.0)),
                     "E_production": float(results.get("E_production", 0.0)),
@@ -1676,7 +1794,7 @@ if st.button("Run Optimization"):
             st.subheader("🌿 CO₂ Emissions")
             st.json({
                 "Air": results.get("E_air", 0),
-                "Sea": results.get("E_sea", 0),
+                "Water": results.get("E_Water", 0),
                 "Road": results.get("E_road", 0),
                 "Last-mile": results.get("E_lastmile", 0),
                 "Production": results.get("E_production", 0),
@@ -1697,7 +1815,7 @@ if st.button("Run Optimization"):
                 ("DC", 50.040750, 15.776590, "Pardubice"),
                 ("DC", 50.629250, 3.057256, "Calais"),
                 ("DC", 56.946285, 24.105078, "Riga"),
-                ("DC", 28.116667, -17.216667, "LaGomera"),
+                ("DC", 36.168056, -5.348611, "Algeciras"),
                 ("Retail", 50.935173, 6.953101, "Cologne"),
                 ("Retail", 51.219890, 4.403460, "Antwerp"),
                 ("Retail", 50.061430, 19.936580, "Krakow"),
@@ -2024,7 +2142,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 📦 MAXIMUM SATISFIABLE DEMAND
                     # ===================================================
-                    st.markdown("## 📦 Maximum Satisfiable Demand (Fallback Model)")
+                    st.markdown("## 📦 Maximum Satisfiable Demand ")
 
                     st.metric(
                         "Satisfied Demand (%)",
@@ -2039,7 +2157,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 💰 OBJECTIVE
                     # ===================================================
-                    st.markdown("## 💰 Objective Value (Excluding Slack Penalty)")
+                    st.markdown("## 💰 Objective Value ")
                     st.metric(
                         "Objective (€)",
                         f"{results_uns['Objective_value']:,.2f}"
@@ -2048,7 +2166,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🌍 MAP
                     # ===================================================
-                    st.markdown("## 🌍 Global Supply Chain Map (Fallback Model)")
+                    st.markdown("## 🌍 Global Supply Chain Map ")
 
                     nodes = [
                     ("Plant", 31.23, 121.47, "Shanghai"),
@@ -2059,7 +2177,7 @@ if st.button("Run Optimization"):
                     ("DC", 47.50, 19.04, "Pardubice"),
                     ("DC", 48.14, 11.58, "Calais"),
                     ("DC", 46.95, 7.44, "Riga"),
-                    ("DC", 45.46, 9.19, "LaGomera"),
+                    ("DC", 36.168056, -5.348611, "Algeciras"),
                     ("Retail", 55.67, 12.57, "Cologne"),
                     ("Retail", 53.35, -6.26, "Antwerp"),
                     ("Retail", 51.50, -0.12, "Krakow"),
@@ -2142,7 +2260,7 @@ if st.button("Run Optimization"):
                         color_discrete_map=color_map,
                         projection="natural earth",
                         scope="world",
-                        title="Global Supply Chain Structure (Fallback Model)",
+                        title="Global Supply Chain Structure ",
                     )
 
                     for trace in fig_map.data:
@@ -2170,7 +2288,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🏭 PRODUCTION OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🏭 Production Outbound Breakdown (Fallback Model)")
+                    st.markdown("## 🏭 Production Outbound Breakdown ")
 
                     f1_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f1[")]
                     f2_2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2_2[")]
@@ -2201,7 +2319,7 @@ if st.button("Run Optimization"):
                         names="Source",
                         values="Units Produced",
                         hole=0.3,
-                        title="Production Share by Source (Fallback Model)",
+                        title="Production Share by Source ",
                     )
 
                     fig_prod.update_traces(
@@ -2215,7 +2333,7 @@ if st.button("Run Optimization"):
                     # ===================================================
                     # 🚚 CROSS-DOCK OUTBOUND PIE CHART
                     # ===================================================
-                    st.markdown("## 🚚 Cross-dock Outbound Breakdown (Fallback Model)")
+                    st.markdown("## 🚚 Cross-dock Outbound Breakdown ")
 
                     f2_vars = [v for v in model_uns.getVars() if v.VarName.startswith("f2[")]
 
@@ -2243,7 +2361,7 @@ if st.button("Run Optimization"):
                             names="Crossdock",
                             values="Shipped (units)",
                             hole=0.3,
-                            title="Cross-dock Outbound Share (Fallback Model)",
+                            title="Cross-dock Outbound Share ",
                         )
 
                         st.plotly_chart(fig_crossdock, use_container_width=True)
@@ -2261,6 +2379,5 @@ if st.button("Run Optimization"):
 
                 except Exception as e2:
                     st.error(f"❌ Fallback model also failed: {e2}")
-
 
 
