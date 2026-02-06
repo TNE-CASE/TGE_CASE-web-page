@@ -124,7 +124,7 @@ else:
         **Manufacturers (Taiwan & Shanghai) → Cross-docks ( or European Manufacturers) → Distribution Centers → Retailer Hubs → Local Customers**.
 
         **Get started:** use the **left Navigation** to open a page.
-        - **Factory Model (SC1 / SC2):** inspect the network structure and facilities.
+        - **Factory Model (Scenario 1 / Scenario 2):** inspect the network structure and facilities.
         - **Optimization Dashboard:** run scenarios and compare **cost vs CO₂** (maps, flow breakdowns, and distributions).
 
         **Inside the Optimization Dashboard:**
@@ -333,7 +333,7 @@ def render_transport_flows_by_mode(model):
 
 
 def render_cost_emission_distribution(results: dict):
-    """Replicates the SC1/SC2-style Cost & Emission Distribution charts for optimization outputs."""
+    """Replicates the Scenario 1/Scenario 2-style Cost & Emission Distribution charts for optimization outputs."""
     st.markdown("## 💰 Cost and 🌿 Emission Distribution")
 
     col1, col2 = st.columns(2)
@@ -1577,11 +1577,11 @@ co2_pct = positive_input("CO₂ Reduction Target (%)", 50.0) / 100
 # In Gamification Mode we always run the parametric MASTER model.
 # Model selection has no effect there, so we hide the selector.
 if mode == "Gamification Mode":
-    model_choice = "SC2F – Allow New Facilities"
+    model_choice = "Scenario 2 – Allow New Facilities"
 else:
     model_choice = st.selectbox(
         "Optimization model:",
-        ["SC1F – Existing Facilities Only", "SC2F – Allow New Facilities"]
+        ["Scenario 1  – Existing Facilities Only", "Scenario 2 – Allow New Facilities"]
     )
 
 # Base sourcing costs (same as MASTER defaults)
@@ -1606,7 +1606,7 @@ if (mode == "Normal Mode") and ("SC2F" in model_choice):
         min_value=0.0,
         value=60.0,
         step=1.0,
-        help="Applies to manufacturing CO₂ cost for NEW (EU) facilities in SC2F.",
+        help="Applies to manufacturing CO₂ cost for NEW (EU) facilities in Scenario 2.",
     )
 else:
     sourcing_cost_multiplier = 1.0
@@ -1684,8 +1684,8 @@ if st.button("Run Optimization"):
                 # Benchmarking
                 # ------------------------------------------------------------
                 try:
-                    # Always benchmark against SC2F optimal (Allow New Facilities)
-                    benchmark_label = "SC2F Optimal (Allow New Facilities)"
+                    # Always benchmark against Scenario 2 optimal (Allow New Facilities)
+                    benchmark_label = "Scenario 2 Optimal (Allow New Facilities)"
                 
                     # Use the same CO₂ price the user entered
                     # - SC1F seçiliyse: co2_cost_per_ton var
@@ -2097,7 +2097,7 @@ if st.button("Run Optimization"):
             # because they ignore the student's facility/mode choices.
             if mode == "Gamification Mode":
                 st.warning(
-                    "Fallback models are only defined for SC1F/SC2F. "
+                    "Fallback models are only defined for Scenario 1/Scenario 2. "
                     "In Gamification Mode, please adjust your facility / mode "
                     "selection or relax the CO₂ target and try again."
                 )
