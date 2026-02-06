@@ -650,7 +650,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)
     # ----------------------------------------------------
-    st.markdown("## 🏭 Production Outbound Breakdown")
+    st.markdown("## 🏭 Production Sourcing Breakdown")
 
     # --- Helper: safe float conversion ---
     def _safe_float_local(x):
@@ -685,7 +685,7 @@ def run_sc1():
     # --- Aggregate production from each plant (prefer summary columns; fallback to detailed f1[*] flows) ---
     prod_sources = {}
     for plant in ["Taiwan", "Shanghai"]:
-        summary_col = f"{plant} Outbound"
+        summary_col = f"{plant} Sourcing"
         if summary_col in closest.index:
             prod_sources[plant] = _safe_float_local(closest.get(summary_col))
         elif closest_demand is not None:
@@ -742,7 +742,7 @@ def run_sc1():
         st.plotly_chart(fig_prod, use_container_width=True)
     
     with colB:
-        st.markdown("#### 📦 Production Outbounds")
+        st.markdown("#### 📦 Production Sourcing")
         st.dataframe(df_prod.round(2), use_container_width=True)
     
     with colC:
@@ -914,7 +914,7 @@ def run_sc1():
     L3_ROAD  = ["Layer3Road", "Layer3road"]
 
     # --- Layer 1: Plants → Cross-docks (Air/Water only) ---
-    st.markdown("### Layer 1: Plants → Cross-docks")
+    st.markdown("### Plants → Cross-docks")
     col1, col2 = st.columns(2)
     l1_water = get_value_safe_any(L1_WATER)
     l1_air = get_value_safe_any(L1_AIR)
@@ -925,7 +925,7 @@ def run_sc1():
     st.markdown("---")
 
     # --- Layer 2: Cross-docks → DCs ---
-    st.markdown("### Layer 2: Cross-docks → DCs")
+    st.markdown("### Cross-docks → DCs")
     col1, col2, col3 = st.columns(3)
     l2_water = get_value_safe_any(L2_WATER)
     l2_air = get_value_safe_any(L2_AIR)
@@ -938,7 +938,7 @@ def run_sc1():
     st.markdown("---")
 
     # --- Layer 3: DCs → Retailer Hubs ---
-    st.markdown("### Layer 3: DCs → Retailer Hubs")
+    st.markdown("### DCs → Retailer Hubs")
     col1, col2, col3 = st.columns(3)
     l3_water = get_value_safe_any(L3_WATER)
     l3_air = get_value_safe_any(L3_AIR)
