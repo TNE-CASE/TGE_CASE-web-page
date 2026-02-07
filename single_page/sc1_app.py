@@ -495,83 +495,7 @@ def run_sc1():
     
     col3.metric("Inventory Total (€)", f"{inv_total:,.0f}" if inv_total is not None else "N/A")
     col4.metric("Transport Total (€)", f"{tr_total:,.0f}" if tr_total is not None else "N/A")
-    
-    # ----------------------------------------------------
-    # COST vs EMISSION PLOT
-    # ----------------------------------------------------
-    st.markdown("## 📈 Cost vs CO₂ Emission Sensitivity")
-    
-    cost_metric_map = {
-        "Total Cost (€)": "Objective_value" if "Objective_value" in df.columns else "Total Cost",
-        "Inventory Cost (€)": (
-            ["Inventory_L1", "Inventory_L2", "Inventory_L3"]
-            if any(c in df.columns for c in ["Inventory_L1", "Inventory_L2", "Inventory_L3"])
-            else ["Transit Inventory Cost"]
-        ),
-        "Transport Cost (€)": (
-            ["Transport_L1", "Transport_L2", "Transport_L3"]
-            if any(c in df.columns for c in ["Transport_L1", "Transport_L2", "Transport_L3"])
-            else ["Transportation Cost"]
-        ),
-    }
-    
-    selected_metric_label = st.selectbox(
-        "Select Cost Metric to Plot:",
-        list(cost_metric_map.keys()),
-        index=0
-    )
-    
-    filtered = subset.copy()
-    
-    # Compute selected cost robustly
-    metric_cols = cost_metric_map[selected_metric_label]
-    if isinstance(metric_cols, list):
-        cols_to_sum = [c for c in metric_cols if c in filtered.columns]
-        if cols_to_sum:
-            filtered["Selected_Cost"] = filtered[cols_to_sum].sum(axis=1)
-        else:
-            st.warning(f"⚠️ Could not find any columns for {selected_metric_label}.")
-            st.stop()
-    else:
-        filtered["Selected_Cost"] = filtered[metric_cols]
-    
-    x_col = "Total Emissions" if "Total Emissions" in filtered.columns else "CO2_Total"
-    
-    # --- Build Plotly chart ---
-    fig = px.scatter(
-        filtered,
-        x=x_col,
-        y="Selected_Cost",
-        color=co2_col,
-        template="plotly_white",
-        color_continuous_scale="Viridis",
-        title=f"{selected_metric_label} vs CO₂ Emissions ({selected_sheet})",
-    )
-    
-    # Safely find the point for the selected scenario
-    if "Selected_Cost" in closest.index:
-        closest_y = closest["Selected_Cost"]
-    else:
-        if isinstance(metric_cols, list):
-            cols_to_sum = [c for c in metric_cols if c in closest.index]
-            closest_y = closest[cols_to_sum].sum()
-        else:
-            closest_y = closest.get(metric_cols, 0)
-    
-    fig.add_scatter(
-        x=[closest[x_col]],
-        y=[closest_y],
-        mode="markers+text",
-        marker=dict(size=14, color="red"),
-        text=["Selected Scenario"],
-        textposition="top center",
-        name="Selected"
-    )
-    
-    
-    # --- Display chart ---
-    st.plotly_chart(fig, use_container_width=True)
-    
+
     # ----------------------------------------------------
     # 🆕 COST vs EMISSIONS DUAL-AXIS BAR-LINE PLOT (DYNAMIC)
     # ----------------------------------------------------
@@ -646,6 +570,86 @@ def run_sc1():
     
     fig_cost_emission = generate_cost_emission_chart_plotly_dynamic(df, closest[co2_col])
     st.plotly_chart(fig_cost_emission, use_container_width=True)
+
+
+    
+    # ----------------------------------------------------
+    # COST vs EMISSION PLOT
+    # ----------------------------------------------------
+    st.markdown("## 📈 Cost vs CO₂ Emission ")
+    
+    cost_metric_map = {
+        "Total Cost (€)": "Objective_value" if "Objective_value" in df.columns else "Total Cost",
+        "Inventory Cost (€)": (
+            ["Inventory_L1", "Inventory_L2", "Inventory_L3"]
+            if any(c in df.columns for c in ["Inventory_L1", "Inventory_L2", "Inventory_L3"])
+            else ["Transit Inventory Cost"]
+        ),
+        "Transport Cost (€)": (
+            ["Transport_L1", "Transport_L2", "Transport_L3"]
+            if any(c in df.columns for c in ["Transport_L1", "Transport_L2", "Transport_L3"])
+            else ["Transportation Cost"]
+        ),
+    }
+    
+    selected_metric_label = st.selectbox(
+        "Select Cost Metric to Plot:",
+        list(cost_metric_map.keys()),
+        index=0
+    )
+    
+    filtered = subset.copy()
+    
+    # Compute selected cost robustly
+    metric_cols = cost_metric_map[selected_metric_label]
+    if isinstance(metric_cols, list):
+        cols_to_sum = [c for c in metric_cols if c in filtered.columns]
+        if cols_to_sum:
+            filtered["Selected_Cost"] = filtered[cols_to_sum].sum(axis=1)
+        else:
+            st.warning(f"⚠️ Could not find any columns for {selected_metric_label}.")
+            st.stop()
+    else:
+        filtered["Selected_Cost"] = filtered[metric_cols]
+    
+    x_col = "Total Emissions" if "Total Emissions" in filtered.columns else "CO2_Total"
+    
+    # --- Build Plotly chart ---
+    fig = px.scatter(
+        filtered,
+        x=x_col,
+        y="Selected_Cost",
+        color=co2_col,
+        template="plotly_white",
+        color_continuous_scale="Viridis",
+        title=f"{selected_metric_label} vs CO₂ Emissions ({selected_sheet})",
+    )
+    
+    # Safely find the point for the selected scenario
+    if "Selected_Cost" in closest.index:
+        closest_y = closest["Selected_Cost"]
+    else:
+        if isinstance(metric_cols, list):
+            cols_to_sum = [c for c in metric_cols if c in closest.index]
+            closest_y = closest[cols_to_sum].sum()
+        else:
+            closest_y = closest.get(metric_cols, 0)
+    
+    fig.add_scatter(
+        x=[closest[x_col]],
+        y=[closest_y],
+        mode="markers+text",
+        marker=dict(size=14, color="red"),
+        text=["Selected Scenario"],
+        textposition="top center",
+        name="Selected"
+    )
+    
+    
+    # --- Display chart ---
+    st.plotly_chart(fig, use_container_width=True)
+    
+
     
     # ----------------------------------------------------
     # 🏭 PRODUCTION OUTBOUND PIE CHART (f1 only)

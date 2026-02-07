@@ -464,10 +464,89 @@ def run_sc2():
     col3.metric("Inventory Total (€)", f"{closest[['Inventory_L1','Inventory_L2','Inventory_L3']].sum():,.0f}")
     col4.metric("Transport Total (€)", f"{closest[['Transport_L1','Transport_L2','Transport_L3']].sum():,.0f}")
     
+
+
+        # ----------------------------------------------------
+    # 🆕 COST vs EMISSIONS DUAL-AXIS BAR-LINE PLOT (DYNAMIC)
+    # ----------------------------------------------------
+    st.markdown("## 💶 Cost vs Emissions ")
+    
+    @st.cache_data(show_spinner=False)
+    def generate_cost_emission_chart_plotly_dynamic(df_sheet: pd.DataFrame, selected_value: float):
+        # Detect column names
+        emissions_col = "Total Emissions" if "Total Emissions" in df_sheet.columns else "CO2_Total"
+        cost_col = "Total Cost" if "Total Cost" in df_sheet.columns else "Objective_value"
+        co2_col = next((c for c in df_sheet.columns if "reduction" in c.lower() or "%" in c.lower()), None)
+    
+        df_chart = df_sheet[[emissions_col, cost_col, co2_col]].copy().sort_values(by=co2_col)
+        df_chart["Emissions (k)"] = df_chart[emissions_col] / 1000
+        df_chart["Cost (M)"] = df_chart[cost_col] / 1_000_000
+    
+        import plotly.graph_objects as go
+        fig = go.Figure()
+    
+        # Grey bars: emissions
+        fig.add_trace(go.Bar(
+            x=df_chart[co2_col],
+            y=df_chart["Emissions (k)"],
+            name="Emissions (thousand)",
+            marker_color="dimgray",
+            opacity=0.9,
+            yaxis="y1"
+        ))
+    
+        # Red dotted line: cost
+        fig.add_trace(go.Scatter(
+            x=df_chart[co2_col],
+            y=df_chart["Cost (M)"],
+            name="Cost (million €)",
+            mode="lines+markers",
+            line=dict(color="red", width=2, dash="dot"),
+            marker=dict(size=6, color="red"),
+            yaxis="y2"
+        ))
+    
+        # Highlight the selected scenario
+        if selected_value is not None and selected_value in df_chart[co2_col].values:
+            highlight_row = df_chart.loc[df_chart[co2_col] == selected_value].iloc[0]
+            fig.add_trace(go.Scatter(
+                x=[highlight_row[co2_col]],
+                y=[highlight_row["Cost (M)"]],
+                mode="markers+text",
+                marker=dict(size=14, color="red", symbol="circle"),
+                text=[f"{highlight_row[co2_col]:.2%}"],
+                textposition="top center",
+                name="Selected Scenario",
+                yaxis="y2"
+            ))
+    
+        # Layout and style
+        fig.update_layout(
+            template="plotly_white",
+            title=dict(text="<b>Cost vs. Emissions</b>", x=0.45, font=dict(color="firebrick", size=20)),
+            xaxis=dict(
+                title="CO₂ Reduction (%)",
+                tickformat=".0%",
+                showgrid=False
+            ),
+            yaxis=dict(title="Emissions (thousand)", side="left", showgrid=False),
+            yaxis2=dict(title="Cost (million €)", overlaying="y", side="right", showgrid=False),
+            legend=dict(orientation="h", y=-0.25, x=0.3),
+            margin=dict(l=40, r=40, t=60, b=60),
+            height=450
+        )
+    
+        return fig
+    
+    fig_cost_emission = generate_cost_emission_chart_plotly_dynamic(df, closest[co2_col])
+    st.plotly_chart(fig_cost_emission, use_container_width=True)
+
+
+
     # ----------------------------------------------------
     # COST vs EMISSION SENSITIVITY PLOT
     # ----------------------------------------------------
-    st.markdown("## 📈 Cost vs CO₂ Emission Sensitivity")
+    st.markdown("## 📈 Cost vs CO₂ Emission ")
     
     # Let user choose which cost metric to plot
     cost_metric_map = {
