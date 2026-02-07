@@ -130,7 +130,7 @@ else:
         **Inside the Optimization Dashboard:**
         - **🧩 Puzzle Mode:** Manually build a feasible network (activate sites, set mode shares, allocate production) and see **feasibility warnings + cost/CO₂ implications**.
         - **Scenario 1:** Optimize within the **current network structure** by changing key “knobs” (e.g., **CO₂ target**).
-        - **Scenario 2:** Allow **structural change via local (EU) production** (open European facilities with fixed costs/capacity and different production emissions) and evaluate trade-offs.
+        - **Scenario 2:** Allow **structural change via local (EU) production** (open European facilities with fixed costs/capacity and different production emissions) and evaluate trade-offs. Allows to see the effect of carbon pricing or sourcing cost changes. 
         """
     )
     st.stop()
