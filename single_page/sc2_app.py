@@ -186,10 +186,10 @@ def run_sc2():
     
     
     
-    def format_number(value):
+    def format_number(value, x):
         """Format numbers with thousand separators and max two decimals."""
         try:
-            return f"{float(value):,.2f}"
+            return f"{float(value):,.{x}f}"
         except (ValueError, TypeError):
             return value
     
@@ -234,7 +234,7 @@ def run_sc2():
         st.error(f"❌ Failed to load data: {e}")
         st.stop()
         
-    df_display = df.applymap(format_number)
+    df_display = df.applymap(lambda x: format_number(x, 0))  # For display purposes only (keep original df for logic)
 
     def format_demand_level(value, fallback_label: str = ""):
         """Return a human-friendly demand level label (e.g., '95%')."""
@@ -455,14 +455,14 @@ def run_sc2():
         cols_to_show = [c for c in closest_df.columns if not (c.lower().startswith("f") or c.lower().startswith("scenario_id"))]
     
         # Display cleaned table
-        st.write(closest_df[cols_to_show].applymap(format_number))
+        st.write(closest_df[cols_to_show].applymap(lambda x: format_number(x, 0)))
     
     col1, col2, col3, col4 = st.columns(4)
     
-    col1.metric("Total Cost (€)", f"{closest['Objective_value']:,.2f}")
+    col1.metric("Total Cost (€)", f"{closest['Objective_value']:,.0f}")
     col2.metric("Total CO₂", f"{closest['CO2_Total']:,.2f}")
-    col3.metric("Inventory Total (€)", f"{closest[['Inventory_L1','Inventory_L2','Inventory_L3']].sum():,.2f}")
-    col4.metric("Transport Total (€)", f"{closest[['Transport_L1','Transport_L2','Transport_L3']].sum():,.2f}")
+    col3.metric("Inventory Total (€)", f"{closest[['Inventory_L1','Inventory_L2','Inventory_L3']].sum():,.0f}")
+    col4.metric("Transport Total (€)", f"{closest[['Transport_L1','Transport_L2','Transport_L3']].sum():,.0f}")
     
     # ----------------------------------------------------
     # COST vs EMISSION SENSITIVITY PLOT

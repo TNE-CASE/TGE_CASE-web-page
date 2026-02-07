@@ -72,10 +72,10 @@ def load_excel_from_github(url: str):
     return excel_data  # dictionary of {sheet_name: DataFrame}
 
 
-def format_number(value):
+def format_number(value, x):
     """Format numbers with thousand separators and max two decimals."""
     try:
-        return f"{float(value):,.2f}"
+        return f"{float(value):,.{x}f}"
     except (ValueError, TypeError):
         return value
 
@@ -292,7 +292,7 @@ def run_sc1():
     # Load selected sheet
     df = excel_data[selected_sheet].round(2)
     
-    df_display = df.applymap(format_number)
+    df_display = df.applymap(lambda x: format_number(x, 0))  # For display purposes only (keep original df for logic)
     
     
     # ----------------------------------------------------
@@ -467,7 +467,7 @@ def run_sc1():
     
     col1.metric(
         "Total Cost (€)",
-        f"{(closest['Total Cost'] if 'Total Cost' in closest else closest.get('Objective_value', 0)):,.2f}"
+        f"{(closest['Total Cost'] if 'Total Cost' in closest else closest.get('Objective_value', 0)):,.0f}"
     )
     col2.metric(
         "Total CO₂ (tons)",
@@ -493,8 +493,8 @@ def run_sc1():
     else:
         tr_total = None
     
-    col3.metric("Inventory Total (€)", f"{inv_total:,.2f}" if inv_total is not None else "N/A")
-    col4.metric("Transport Total (€)", f"{tr_total:,.2f}" if tr_total is not None else "N/A")
+    col3.metric("Inventory Total (€)", f"{inv_total:,.0f}" if inv_total is not None else "N/A")
+    col4.metric("Transport Total (€)", f"{tr_total:,.0f}" if tr_total is not None else "N/A")
     
     # ----------------------------------------------------
     # COST vs EMISSION PLOT
