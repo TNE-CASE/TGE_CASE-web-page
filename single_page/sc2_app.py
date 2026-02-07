@@ -535,7 +535,7 @@ def run_sc2():
         fig.add_trace(go.Scatter(
             x=df_chart["_co2_frac"],
             y=df_chart["Cost (M)"],
-            name="Cost (million €)",
+            name="Total Cost (million €)",
             mode="lines+markers",
             line=dict(color="red", width=2, dash="dot"),
             marker=dict(size=6, color="red"),
