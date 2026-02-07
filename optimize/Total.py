@@ -139,7 +139,82 @@ else:
 # OPTIMIZATION DASHBOARD
 # ================================================================
 
-st.title("🌍 Global Supply Chain Optimization ")
+# ------------------------------------------------------------
+# Header row: title (left) + compact world map with all potential nodes (right)
+# (Shown immediately — does NOT require running an optimization.)
+hdr_left, hdr_right = st.columns([2.7, 1.3])
+
+with hdr_left:
+    st.title("🌍 Global Supply Chain Optimization ")
+
+with hdr_right:
+    # Small static map with ALL potential nodes (plants, cross-docks, DCs, retailers, and EU facilities)
+    _all_nodes = [
+        ("Plant", 31.230416, 121.473701, "Shanghai"),
+        ("Plant", 23.553100, 121.021100, "Taiwan"),
+
+        ("Cross-dock", 48.856610, 2.352220, "Paris"),
+        ("Cross-dock", 54.352100, 18.646400, "Gdansk"),
+        ("Cross-dock", 48.208500, 16.372100, "Vienna"),
+
+        ("DC", 50.040750, 15.776590, "Pardubice"),
+        ("DC", 50.954468, 1.862801, "Calais"),
+        ("DC", 56.946285, 24.105078, "Riga"),
+        ("DC", 36.168056, -5.348611, "Algeciras"),
+
+        ("Retail", 50.935173, 6.953101, "Cologne"),
+        ("Retail", 51.219890, 4.403460, "Antwerp"),
+        ("Retail", 50.061430, 19.936580, "Krakow"),
+        ("Retail", 54.902720, 23.909610, "Kaunas"),
+        ("Retail", 59.911491, 10.757933, "Oslo"),
+        ("Retail", 53.350140, -6.266155, "Dublin"),
+        ("Retail", 59.329440, 18.068610, "Stockholm"),
+
+        ("EU Facility", 47.497913, 19.040236, "Budapest"),
+        ("EU Facility", 50.088040, 14.420760, "Prague"),
+        ("EU Facility", 51.898514, -8.475604, "Cork"),
+        ("EU Facility", 60.169520, 24.935450, "Helsinki"),
+        ("EU Facility", 52.229770, 21.011780, "Warsaw"),
+    ]
+
+    _df_all = pd.DataFrame(_all_nodes, columns=["Type", "Lat", "Lon", "City"])
+
+    _color_map_small = {
+        "Plant": "purple",
+        "Cross-dock": "dodgerblue",
+        "DC": "black",
+        "Retail": "red",
+        "EU Facility": "deepskyblue",
+    }
+
+    _fig_small = px.scatter_geo(
+        _df_all,
+        lat="Lat",
+        lon="Lon",
+        color="Type",
+        hover_name="City",
+        color_discrete_map=_color_map_small,
+        projection="natural earth",
+        scope="world",
+    )
+
+    # Make it compact and clean (no legend, no toolbar)
+    _fig_small.update_traces(marker=dict(size=6, opacity=0.9, line=dict(width=0.4, color="white")))
+    _fig_small.update_geos(
+        showcountries=False,
+        showland=True,
+        landcolor="rgb(245,245,245)",
+        showocean=True,
+        oceancolor="rgb(230,240,255)",
+        fitbounds="locations",
+    )
+    _fig_small.update_layout(
+        height=220,
+        margin=dict(l=0, r=0, t=0, b=0),
+        showlegend=False,
+    )
+
+    st.plotly_chart(_fig_small, use_container_width=True, config={"displayModeBar": False})
 
 # ------------------------------------------------------------
 # Google Analytics Injection (safe)
