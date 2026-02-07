@@ -499,7 +499,7 @@ def run_sc1():
     # ----------------------------------------------------
     # 🆕 COST vs EMISSIONS DUAL-AXIS BAR-LINE PLOT (DYNAMIC)
     # ----------------------------------------------------
-    st.markdown("## 💶 Cost vs Emissions ")
+    st.markdown("## 💶 Emissions vs Cost ")
     
     @st.cache_data(show_spinner=False)
     def generate_cost_emission_chart_plotly_dynamic(df_sheet: pd.DataFrame, selected_value: float):
@@ -576,7 +576,7 @@ def run_sc1():
     # ----------------------------------------------------
     # COST vs EMISSION PLOT
     # ----------------------------------------------------
-    st.markdown("## 📈 Cost vs CO₂ Emission ")
+    st.markdown("## 📈 CO₂ Emission vs Cost ")
     
     cost_metric_map = {
         "Total Cost (€)": "Objective_value" if "Objective_value" in df.columns else "Total Cost",

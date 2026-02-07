@@ -468,7 +468,7 @@ def run_sc2():
     # ----------------------------------------------------
     # 🆕 COST vs EMISSIONS DUAL-AXIS BAR-LINE PLOT (DYNAMIC)
     # ----------------------------------------------------
-    st.markdown("## 💶 Cost vs Emissions ")
+    st.markdown("## 💶 Emissions vs Cost ")
 
     @st.cache_data(show_spinner=False)
     def generate_cost_emission_chart_plotly_dynamic(df_sheet: pd.DataFrame, selected_value: float):
@@ -588,7 +588,7 @@ def run_sc2():
     # ----------------------------------------------------
     # COST vs EMISSION SENSITIVITY PLOT
     # ----------------------------------------------------
-    st.markdown("## 📈 Cost vs CO₂ Emission ")
+    st.markdown("## 📈 CO₂ Emission vs Cost ")
     
     # Let user choose which cost metric to plot
     cost_metric_map = {
