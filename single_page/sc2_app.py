@@ -463,6 +463,126 @@ def run_sc2():
     col2.metric("Total CO₂", f"{closest['CO2_Total']:,.2f}")
     col3.metric("Inventory Total (€)", f"{closest[['Inventory_L1','Inventory_L2','Inventory_L3']].sum():,.0f}")
     col4.metric("Transport Total (€)", f"{closest[['Transport_L1','Transport_L2','Transport_L3']].sum():,.0f}")
+
+
+    # ----------------------------------------------------
+    # 🆕 COST vs EMISSIONS DUAL-AXIS BAR-LINE PLOT (DYNAMIC)
+    # ----------------------------------------------------
+    st.markdown("## 💶 Cost vs Emissions ")
+
+    @st.cache_data(show_spinner=False)
+    def generate_cost_emission_chart_plotly_dynamic(df_sheet: pd.DataFrame, selected_value: float):
+        """Dual-axis (bars=emissions, line=cost) over CO₂ target levels, with the current selection highlighted."""
+
+        # Detect column names robustly
+        emissions_col = "CO2_Total" if "CO2_Total" in df_sheet.columns else (
+            "Total Emissions" if "Total Emissions" in df_sheet.columns else None
+        )
+        cost_col = "Objective_value" if "Objective_value" in df_sheet.columns else (
+            "Total Cost" if "Total Cost" in df_sheet.columns else None
+        )
+
+        # CO₂ target column (fraction 0–1 preferred)
+        co2_col = None
+        if "CO2_percentage" in df_sheet.columns:
+            co2_col = "CO2_percentage"
+        else:
+            # fallback: try to find a CO2-related percentage / reduction column
+            for c in df_sheet.columns:
+                cl = str(c).lower()
+                if "co2" in cl and any(k in cl for k in ["%", "percentage", "reduction", "target"]):
+                    co2_col = c
+                    break
+
+        if emissions_col is None or cost_col is None or co2_col is None:
+            return None
+
+        df_chart = df_sheet[[emissions_col, cost_col, co2_col]].copy()
+
+        # Normalize CO₂ target to fraction (0–1) if dataset stores 0–100
+        try:
+            co2_max = float(pd.to_numeric(df_chart[co2_col], errors="coerce").max())
+        except Exception:
+            co2_max = 1.0
+
+        if co2_max is not None and co2_max > 1.5:
+            df_chart["_co2_frac"] = pd.to_numeric(df_chart[co2_col], errors="coerce") / 100.0
+            selected_x = (selected_value / 100.0) if selected_value is not None else None
+        else:
+            df_chart["_co2_frac"] = pd.to_numeric(df_chart[co2_col], errors="coerce")
+            selected_x = selected_value
+
+        df_chart = df_chart.dropna(subset=["_co2_frac"]).sort_values(by="_co2_frac")
+
+        # Unit scaling for readability
+        df_chart["Emissions (k)"] = pd.to_numeric(df_chart[emissions_col], errors="coerce") / 1000.0
+        df_chart["Cost (M)"] = pd.to_numeric(df_chart[cost_col], errors="coerce") / 1_000_000.0
+
+        import plotly.graph_objects as go
+        fig = go.Figure()
+
+        # Grey bars: emissions
+        fig.add_trace(go.Bar(
+            x=df_chart["_co2_frac"],
+            y=df_chart["Emissions (k)"],
+            name="Emissions (thousand)",
+            marker_color="dimgray",
+            opacity=0.9,
+            yaxis="y1",
+        ))
+
+        # Red dotted line: cost
+        fig.add_trace(go.Scatter(
+            x=df_chart["_co2_frac"],
+            y=df_chart["Cost (M)"],
+            name="Cost (million €)",
+            mode="lines+markers",
+            line=dict(color="red", width=2, dash="dot"),
+            marker=dict(size=6, color="red"),
+            yaxis="y2",
+        ))
+
+        # Highlight the selected scenario (closest x)
+        if selected_x is not None and len(df_chart) > 0:
+            try:
+                hi_idx = (df_chart["_co2_frac"] - float(selected_x)).abs().idxmin()
+                highlight_row = df_chart.loc[hi_idx]
+                fig.add_trace(go.Scatter(
+                    x=[highlight_row["_co2_frac"]],
+                    y=[highlight_row["Cost (M)"]],
+                    mode="markers+text",
+                    marker=dict(size=14, color="red", symbol="circle"),
+                    text=[f"{float(highlight_row['_co2_frac']):.2%}"],
+                    textposition="top center",
+                    name="Selected Scenario",
+                    yaxis="y2",
+                ))
+            except Exception:
+                pass
+
+        # Layout and style
+        fig.update_layout(
+            template="plotly_white",
+            title=dict(text="<b>Cost vs. Emissions</b>", x=0.45, font=dict(color="firebrick", size=20)),
+            xaxis=dict(
+                title="CO₂ Reduction (%)",
+                tickformat=".0%",
+                showgrid=False,
+            ),
+            yaxis=dict(title="Emissions (thousand)", side="left", showgrid=False),
+            yaxis2=dict(title="Cost (million €)", overlaying="y", side="right", showgrid=False),
+            legend=dict(orientation="h", y=-0.25, x=0.3),
+            margin=dict(l=40, r=40, t=60, b=60),
+            height=450,
+        )
+
+        return fig
+
+    fig_cost_emission = generate_cost_emission_chart_plotly_dynamic(pool, float(closest.get("CO2_percentage", 0.0)))
+    if fig_cost_emission is not None:
+        st.plotly_chart(fig_cost_emission, use_container_width=True)
+    else:
+        st.warning("⚠️ Could not build the dual-axis Cost vs Emissions chart (missing required columns in this dataset).")
     
 
     # ----------------------------------------------------
