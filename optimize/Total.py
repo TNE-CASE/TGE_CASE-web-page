@@ -401,10 +401,10 @@ def display_layer_summary_model(model, title: str, prefix: str, include_road: bo
 
 def render_transport_flows_by_mode(model):
     st.markdown("## 🚚 Transport Flows by Mode")
-    display_layer_summary_model(model, "Layer 1: Plants → Cross-docks", "f1", include_road=False)
-    display_layer_summary_model(model, "Layer 2a: Cross-docks → DCs", "f2", include_road=True)
-    display_layer_summary_model(model, "Layer 2b: New Facilities → DCs", "f2_2", include_road=True)
-    display_layer_summary_model(model, "Layer 3: DCs → Retailer Hubs", "f3", include_road=True)
+    display_layer_summary_model(model, "Plants → Cross-docks", "f1", include_road=False)
+    display_layer_summary_model(model, "Cross-docks → DCs", "f2", include_road=True)
+    display_layer_summary_model(model, "New Facilities → DCs", "f2_2", include_road=True)
+    display_layer_summary_model(model, "DCs → Retailer Hubs", "f3", include_road=True)
 
 
 def render_cost_emission_distribution(results: dict):
@@ -1041,7 +1041,7 @@ def _render_puzzle_mode():
     st.markdown("#### Facility selection")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.caption("Layer 1 Plants")
+        st.caption("Plants")
         plants = [p for p in cfg["plants_all"] if st.checkbox(p, value=True, key=f"pz_pl_{p}")]
     with col2:
         st.caption("Cross-docks")
@@ -1050,7 +1050,7 @@ def _render_puzzle_mode():
         st.caption("Distribution Centers")
         dcs = [d for d in cfg["dcs_all"] if st.checkbox(d, value=True, key=f"pz_dc_{d}")]
     with col4:
-        st.caption("Layer 2 New Facilities")
+        st.caption("New Facilities")
         new_locs = [n for n in cfg["new_locs_all"] if st.checkbox(n, value=False, key=f"pz_new_{n}")]
 
     total_demand = int(sum(cfg["demand"].values()))
@@ -1128,7 +1128,7 @@ def _render_puzzle_mode():
     st.markdown("#### Transport mode shares")
     st.caption("Defaults: L1 Water=50% (air remainder), L2 Water=50% & air=50% (road remainder), L3 Water=50% & air=25% (road remainder). Shares are set in **percent (%).**")
 
-    st.markdown("**Layer 1 (Plant → Cross-dock)**")
+    st.markdown("**Plant → Cross-dock**")
     l1_mode_share_by_plant = {}
     for p in (plants or cfg["plants_all"]):
         Water_pct = st.slider(f"{p} – Water share (L1) (%)", 0, 100, 50, 1, key=f"pz_l1_Water_{p}")
@@ -1140,7 +1140,7 @@ def _render_puzzle_mode():
         Water = float(Water_pct) / 100.0
         l1_mode_share_by_plant[p] = {"Water": float(Water)}
 
-    st.markdown("**Layer 2 (Cross-dock / New → DC)**")
+    st.markdown("**Cross-dock / New → DC**")
     l2_mode_share_by_origin = {}
     for o in (crossdocks or cfg["crossdocks_all"]) + list(new_locs):
         with st.expander(f"{o}", expanded=False):
@@ -1163,7 +1163,7 @@ def _render_puzzle_mode():
             air = float(air_pct) / 100.0
             l2_mode_share_by_origin[o] = {"Water": float(Water), "air": float(air)}
 
-    st.markdown("**Layer 3 (DC → Retailer)**")
+    st.markdown("**DC → Retailer**")
     l3_mode_share_by_dc = {}
     for d in (dcs or cfg["dcs_all"]):
         with st.expander(f"{d}", expanded=False):
@@ -1483,21 +1483,21 @@ def _render_puzzle_mode():
         st.markdown("## 🚚 Transport Flows by Mode")
         cL1, cL2, cL2n, cL3 = st.columns(4)
         with cL1:
-            st.caption("Layer 1")
+            st.caption("Plants")
             st.metric("✈️ Air", f"{flows['L1']['air']:,.0f}")
             st.metric("🚢 Water", f"{flows['L1']['Water']:,.0f}")
         with cL2:
-            st.caption("Layer 2")
+            st.caption("Cross-docks ")
             st.metric("✈️ Air", f"{flows['L2']['air']:,.0f}")
             st.metric("🚢 Water", f"{flows['L2']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2']['road']:,.0f}")
         with cL2n:
-            st.caption("Layer 2 (new)")
+            st.caption("New Facilities")
             st.metric("✈️ Air", f"{flows['L2_new']['air']:,.0f}")
             st.metric("🚢 Water", f"{flows['L2_new']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L2_new']['road']:,.0f}")
         with cL3:
-            st.caption("Layer 3")
+            st.caption("DCs → Retailer Hubs")
             st.metric("✈️ Air", f"{flows['L3']['air']:,.0f}")
             st.metric("🚢 Water", f"{flows['L3']['Water']:,.0f}")
             st.metric("🚛 Road", f"{flows['L3']['road']:,.0f}")
@@ -1666,12 +1666,12 @@ BASE_SOURCING_COST = {"Taiwan": 3.343692308, "Shanghai": 3.423384615}
 # (Gamification Mode keeps MASTER defaults and does not expose these controls.)
 if (mode == "Normal Mode") and ("SC2F" in model_choice):
     sourcing_cost_multiplier_pct = st.slider(
-        "Sourcing Cost Multiplier (Layer 1) (%)",
+        "Sourcing Cost Multiplier for Asian facilites (%)",
         min_value=50,
         max_value=400,
         value=100,
         step=1,
-        help="Scales plant sourcing costs on Layer 1: effective_cost = base_cost × (multiplier% / 100).",
+        help="Scales plant sourcing costs on : effective_cost = base_cost × (multiplier% / 100).",
     )
     sourcing_cost_multiplier = float(sourcing_cost_multiplier_pct) / 100.0
 
