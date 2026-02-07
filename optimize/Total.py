@@ -1124,7 +1124,7 @@ def _render_puzzle_mode():
         "service_level": 0.9,
     }
 
-    if st.button("Compute Implications", key="pz_run"):
+    if st.button("Evaluate performance of the supply chain configuration", key="pz_run"):
         results, flows = _compute_puzzle_results(cfg, sel, scen)
 
         # Persist the last run so users can submit after exploring the outputs.
@@ -1159,7 +1159,7 @@ def _render_puzzle_mode():
         # Current selection metrics
         c_cost, c_em = st.columns(2)
         with c_cost:
-            st.metric("💰 Total Cost (€)", f"{total_cost_val:,.2f}")
+            st.metric("💰 Total Cost (€)", f"{total_cost_val:,.0f}")
         with c_em:
             st.metric("🌿 Total Emission (tons CO₂)", f"{total_co2_val:,.2f}")
 
@@ -1756,7 +1756,7 @@ if st.button("Run Optimization"):
             c_cost, c_em = st.columns(2)
 
             with c_cost:
-                st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.2f}")
+                st.metric("💰 Total Cost (€)", f"{results['Objective_value']:,.0f}")
             with c_em:
                 st.metric("🌿 Total Emission (tons CO₂)", f"{results.get('CO2_Total', 0):,.2f}")
 
@@ -1772,9 +1772,9 @@ if st.button("Run Optimization"):
             
                     st.subheader("🏁 Gap vs Optimal")
                     c1, c2, c3 = st.columns(3)
-                    c1.metric("Your (Gamification) Objective (€)", f"{stud_obj:,.2f}")
-                    c2.metric(benchmark_label or "Optimal Objective (€)", f"{opt_obj:,.2f}")
-                    c3.metric("Gap (You − Optimal)", f"{gap:,.2f}", delta=f"{gap_pct:+.2f}%")
+                    c1.metric("Your Objective (€)", f"{stud_obj:,.0f}")
+                    c2.metric(benchmark_label or "Optimal Objective (€)", f"{opt_obj:,.0f}")
+                    c3.metric("Gap (You − Optimal)", f"{gap:,.0f}", delta=f"{gap_pct:+.0f}%")
             
                     with st.expander("See benchmark breakdown"):
                         st.json({
@@ -2160,7 +2160,7 @@ if st.button("Run Optimization"):
                     st.markdown("## 💰 Objective Value ")
                     st.metric(
                         "Objective (€)",
-                        f"{results_uns['Objective_value']:,.2f}"
+                        f"{results_uns['Objective_value']:,.0f}"
                     )
 
                     # ===================================================
