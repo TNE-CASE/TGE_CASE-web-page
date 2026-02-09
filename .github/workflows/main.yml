@@ -1,13 +1,18 @@
-name: Build macOS .app (PyInstaller)
+name: Build Desktop Apps (Windows .exe + macOS .app)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    tags:
+      - "v*"
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-13, macos-14] # macos-13: Intel, macos-14: Apple Silicon
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -18,8 +23,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: |
+            optimize/requirements.txt
+            requirements.txt
 
-      - name: Install deps
+      - name: Install dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip setuptools wheel
@@ -32,59 +40,80 @@ jobs:
           fi
           python -m pip install --upgrade pyinstaller
 
-          # Optional: try to install gurobipy. If it fails, continue.
-          # (If your app hard-requires gurobi, you should make it optional in code for mac builds.)
+          # gurobipy requirements içinde yoksa bile dene (fail olursa build devam etsin)
           python -m pip install gurobipy || true
 
-      - name: Build .app with PyInstaller
+      - name: Validate required folders
         shell: bash
         run: |
-          # macOS add-data separator is ":"  (NOT ";" like Windows)
-          ADD_DATA="optimize:app"
-          if [ ! -d optimize ]; then
-            echo "optimize/ folder not found." && exit 1
-          fi
-          if [ ! -f launcher.py ]; then
-            echo "launcher.py not found in repo root." && exit 1
-          fi
+          test -f launcher.py || (echo "launcher.py missing at repo root" && exit 1)
+          test -d optimize || (echo "optimize/ folder missing" && exit 1)
+          test -d single_page || (echo "single_page/ folder missing" && exit 1)
 
-          # Base args
-          ARGS=(
-            --noconfirm
-            --clean
-            --onedir
-            --windowed
-            --name TGECase
-            --collect-all streamlit
-            --collect-all plotly
-            --collect-all altair
-            --collect-all pydeck
-            --collect-all pandas
-            --collect-all numpy
-            --collect-all scipy
-            --collect-all geopy
-            --copy-metadata streamlit
-            --add-data "$ADD_DATA"
+      # ---------------------------
+      # Windows build (.exe, zip)
+      # ---------------------------
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path dist)  { Remove-Item -Recurse -Force dist }
+
+          # NOTE: Windows add-data uses ";" separator
+          python -m PyInstaller `
+            --noconfirm --clean --onedir --noconsole `
+            --name "TGECase" `
+            --collect-all streamlit `
+            --collect-all plotly `
+            --collect-all altair `
+            --collect-all pydeck `
+            --collect-all pandas `
+            --collect-all numpy `
+            --collect-all scipy `
+            --collect-all geopy `
+            --copy-metadata streamlit `
+            --collect-all gurobipy `
+            --collect-binaries gurobipy `
+            --collect-submodules gurobipy `
+            --add-data "optimize;app" `
+            --add-data "single_page;single_page" `
             launcher.py
-          )
 
-          # If gurobipy is installed in this runner, also try collecting it
-          python -c "import gurobipy" >/dev/null 2>&1 && \
-            ARGS+=( --collect-all gurobipy --collect-binaries gurobipy --collect-submodules gurobipy ) || true
+          Compress-Archive -Path dist\TGECase\* -DestinationPath dist\TGECase-windows.zip
 
-          python -m PyInstaller "${ARGS[@]}"
-
-      - name: Zip .app
+      # ---------------------------
+      # macOS build (.app, zip)
+      # ---------------------------
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          ls -la dist
-          if [ ! -d "dist/TGECase.app" ]; then
-            echo "dist/TGECase.app not found!" && exit 1
-          fi
-          ditto -c -k --sequesterRsrc --keepParent "dist/TGECase.app" "TGECase-macOS.zip"
+          rm -rf build dist || true
 
-      - name: Upload artifact
+          # NOTE: macOS add-data uses ":" separator
+          python -m PyInstaller \
+            --noconfirm --clean --onedir --windowed \
+            --name "TGECase" \
+            --collect-all streamlit \
+            --collect-all plotly \
+            --collect-all altair \
+            --collect-all pydeck \
+            --collect-all pandas \
+            --collect-all numpy \
+            --collect-all scipy \
+            --collect-all geopy \
+            --copy-metadata streamlit \
+            --add-data "optimize:app" \
+            --add-data "single_page:single_page" \
+            launcher.py
+
+          ARCH="$(uname -m)"
+          # dist/TGECase.app -> zip
+          ditto -c -k --sequesterRsrc --keepParent "dist/TGECase.app" "dist/TGECase-macOS-${ARCH}.zip"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TGECase-macOS-app
-          path: TGECase-macOS.zip
+          name: TGECase-${{ matrix.os }}
+          path: dist/*.zip
