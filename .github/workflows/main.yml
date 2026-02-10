@@ -130,7 +130,8 @@ jobs:
           [ -f single_page/requirements.txt ] && python -m pip install -r single_page/requirements.txt || true
 
           python -m pip install pyinstaller
-          python -m pip install gurobipy || true
+          python -m pip install gurobipy
+          python -c "import gurobipy as gp; print('gurobipy OK, version:', gp.__version__)"
 
       - name: Stage bundle folders
         shell: bash
@@ -175,6 +176,9 @@ jobs:
             --collect-all numpy \
             --collect-all scipy \
             --collect-all geopy \
+            --collect-all gurobipy \
+            --collect-binaries gurobipy \
+            --collect-submodules gurobipy \
             --add-data "_bundle_app:app" \
             --add-data "single_page:single_page" \
             launcher.py
