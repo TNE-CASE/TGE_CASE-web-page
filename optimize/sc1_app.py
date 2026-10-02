@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 import streamlit.components.v1 as components
 
+from model_reference import render_reference_panels
+
 
 
 # ----------------------------------------------------
@@ -237,6 +239,7 @@ def run_sc1():
     # )
     
     st.title("🏭 Scenario 1: Process Optimization")
+    render_reference_panels("sc1")
     
     
     

@@ -11,6 +11,12 @@ import sys
 from pathlib import Path
 import streamlit.components.v1 as components
 
+from model_reference import (
+    NEW_LOC_OPENING_COST,
+    build_cost_distribution_figure,
+    render_reference_panels,
+)
+
 
 # ----------------------------------------------------
 # 🚨 BIG WARNING POP-UP (injects into top window)
@@ -155,6 +161,7 @@ def run_sc2():
     # )
     
     st.title("🏭 Scenario 2: Supply Chain Transformation")
+    render_reference_panels("sc2")
     
     # ----------------------------------------------------
     # 🧭 CACHED DATA LOADERS
@@ -690,41 +697,32 @@ def run_sc2():
             + closest.get("Inventory_L3", 0)
         )
     
+        # Alternative-facility cost, which the four bars above leave out entirely — without it
+        # they fall short of the objective value shown at the top of the page whenever a site is
+        # open. The per-unit half belongs with the other variable charges.
+        sourcing_handling_cost += _safe_float(closest.get("ProdCost_NewLocs", 0))
+
+        # The sheet reports opening and operating combined. Rebuild the opening half from the
+        # sites this row actually opened and take operating as the remainder, so the two
+        # segments always add back to the sheet's own figure.
+        facility_fixed = _safe_float(closest.get("FixedCost_NewLocs", 0))
+        facility_opening = sum(
+            cost for site, cost in NEW_LOC_OPENING_COST.items()
+            if _safe_float(closest.get(f"f2_2_bin[{site}]", 0)) > 0.5
+        )
+
         cost_parts = {
             "Transportation Cost": transport_cost,
             "Sourcing/Handling Cost": sourcing_handling_cost,
             "Carbon Cost in Production": co2_cost_production,
             "Inventory Cost": inventory_cost
         }
-    
-        df_cost_dist = pd.DataFrame({
-            "Category": list(cost_parts.keys()),
-            "Value": list(cost_parts.values())
-        })
-        df_cost_dist["Value_MEUR"] = pd.to_numeric(df_cost_dist["Value"], errors="coerce") / 1_000_000.0
-    
-        fig_cost = px.bar(
-            df_cost_dist,
-            x="Category",
-            y="Value_MEUR",
-            text="Value_MEUR",
-            color="Category",
-            color_discrete_sequence=["#A7C7E7", "#B0B0B0", "#F8C471", "#5D6D7E"]
+
+        fig_cost = build_cost_distribution_figure(
+            cost_parts,
+            {"Opening": facility_opening, "Operating": facility_fixed - facility_opening},
         )
-    
-        fig_cost.update_traces(
-            texttemplate="%{text:.2f} M€",
-            textposition="outside"
-        )
-        fig_cost.update_layout(
-            template="plotly_white",
-            showlegend=False,
-            xaxis_tickangle=-35,
-            yaxis_title="Million €",
-            height=400,
-            yaxis_tickformat=".2f"
-        )
-    
+
         st.plotly_chart(fig_cost, use_container_width=True)
     
     # --- 🌿 Emission Distribution (from recorded columns) ---

@@ -52,6 +52,12 @@ from gamification import render_gamification_mode
 
 from sc1_app import run_sc1
 from sc2_app import run_sc2
+from model_reference import (
+    build_cost_distribution_figure,
+    facility_cost_split,
+    opened_new_locs_from_model,
+    render_reference_panels,
+)
 from Scenario_Setting_For_SC1F import run_scenario as run_SC1F
 from Scenario_Setting_For_SC2F import run_scenario as run_SC2F
 # MASTER model import (supports mode-share enforcement & parametric versions)
@@ -451,7 +457,7 @@ def render_transport_flows_by_mode(model):
     display_layer_summary_model(model, "DCs → Retail Hubs", "f3", include_road=True)
 
 
-def render_cost_emission_distribution(results: dict):
+def render_cost_emission_distribution(results: dict, *, opened_new_locs=None):
     """Replicates the Scenario 1/Scenario 2-style Cost & Emission Distribution charts for optimization outputs."""
     st.markdown("## 💰 Cost and 🌿 Emission Distribution")
 
@@ -497,6 +503,17 @@ def render_cost_emission_distribution(results: dict):
         if inventory_cost <= 0 and "Transit Inventory Cost" in results:
             inventory_cost = _safe_float(results.get("Transit Inventory Cost", 0))
 
+        # Alternative-facility cost, which the four bars above leave out entirely. Its variable
+        # half belongs with the other per-unit charges; the fixed half gets its own column, so
+        # the bars add up to the headline total instead of falling short of it.
+        #
+        # Folded in *after* the fallbacks above on purpose: doing it earlier would make a zero
+        # sourcing/handling cost look non-zero and stop its fallback from firing.
+        facility_opening, facility_operating, facility_prod = facility_cost_split(
+            results, opened_new_locs
+        )
+        sourcing_handling_cost += facility_prod
+
         cost_parts = {
             "Transportation Cost": transport_cost,
             "Sourcing/Handling Cost": sourcing_handling_cost,
@@ -504,32 +521,9 @@ def render_cost_emission_distribution(results: dict):
             "Inventory Cost": inventory_cost,
         }
 
-        df_cost_dist = pd.DataFrame({
-            "Category": list(cost_parts.keys()),
-            "Value": list(cost_parts.values()),
-        })
-        df_cost_dist["Value_MEUR"] = pd.to_numeric(df_cost_dist["Value"], errors="coerce") / 1_000_000.0
-
-        fig_cost = px.bar(
-            df_cost_dist,
-            x="Category",
-            y="Value_MEUR",
-            text="Value_MEUR",
-            color="Category",
-            color_discrete_sequence=["#A7C7E7", "#B0B0B0", "#F8C471", "#5D6D7E"],
-        )
-
-        fig_cost.update_traces(
-            texttemplate="%{text:.2f} M€",
-            textposition="outside",
-        )
-        fig_cost.update_layout(
-            template="plotly_white",
-            showlegend=False,
-            xaxis_tickangle=-35,
-            yaxis_title="Million €",
-            height=400,
-            yaxis_tickformat=".2f",
+        fig_cost = build_cost_distribution_figure(
+            cost_parts,
+            {"Opening": facility_opening, "Operating": facility_operating},
         )
 
         st.plotly_chart(fig_cost, use_container_width=True)
@@ -922,13 +916,20 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     transport_L2_new = 0.0
     inv_L2_new = 0.0
     cost_new_var = 0.0
-    cost_new_fixed = 0.0
+    cost_new_opening = 0.0
+    cost_new_operating = 0.0
     co2_tr_L2_new = {"air": 0.0, "Water": 0.0, "road": 0.0}
 
     for n in new_locs:
-        # Selecting a new facility means opening it: charge its fixed opening cost even if the
-        # user has not (yet) allocated any production units to it.
-        cost_new_fixed += cfg["new_loc_openingCost"].get(n, 0.0)
+        # Selecting a new facility means opening it: charge its fixed costs even if the user has
+        # not (yet) allocated any production units to it.
+        #
+        # Both of them - the one-off opening cost and the annual operating cost. The model is
+        # single-period, so the two are the same kind of charge: you pay them for having the
+        # site, not for what it makes. The SC2 optimizer this game is built from charges both in
+        # its own `FixedCost_NewLocs`.
+        cost_new_opening += cfg["new_loc_openingCost"].get(n, 0.0)
+        cost_new_operating += cfg["new_loc_operationCost"].get(n, 0.0)
         if new_prod.get(n, 0.0) <= 1e-9:
             continue
         mshare = _l2_modes(n)
@@ -994,6 +995,7 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
     total_transport = transport_L1 + transport_L2 + transport_L2_new + transport_L3
     total_inventory = inv_L1 + inv_L2 + inv_L2_new + inv_L3
     total_handling = handling_L2 + handling_L3
+    cost_new_fixed = cost_new_opening + cost_new_operating
     total_new_locs = cost_new_var + cost_new_fixed
 
     objective = (
@@ -1034,6 +1036,9 @@ def _compute_puzzle_results(cfg: dict, sel: dict, scen: dict) -> tuple[dict, dic
         "CO2_Total": co2_total,
         "LastMile_Cost": lastmile_cost,
         "Cost_NewLocs": total_new_locs,
+        "Cost_NewLocs_opening": cost_new_opening,
+        "Cost_NewLocs_operating": cost_new_operating,
+        "Cost_NewLocs_prod": cost_new_var,
         "dc_capacity_violations": dc_violations,
     }
 
@@ -1054,6 +1059,10 @@ def _render_puzzle_mode():
     )
 
     cfg = _puzzle_defaults()
+
+    # What the model charges and emits, so the choices below are an informed puzzle rather than
+    # a guess. Passing the live cfg keeps these tables from drifting away from the engine.
+    render_reference_panels("puzzle", cfg)
 
     if SHOW_PUZZLE_SCENARIO_EVENTS_UI:
         st.markdown("#### Scenario events")
@@ -1983,7 +1992,9 @@ if st.button("Run Optimization"):
                 "Total": results.get("CO2_Total", 0),
             }.items()})
 
-            render_cost_emission_distribution(results)
+            render_cost_emission_distribution(
+                results, opened_new_locs=opened_new_locs_from_model(model)
+            )
 
             # ===========================================
             # 🌍 MAP (no more pd errors!)
@@ -2340,7 +2351,9 @@ if st.button("Run Optimization"):
                         f"{results_uns['Objective_value']:,.0f}"
                     )
 
-                    render_cost_emission_distribution(results_uns)
+                    render_cost_emission_distribution(
+                        results_uns, opened_new_locs=opened_new_locs_from_model(model_uns)
+                    )
 
                     # ===================================================
                     # 🌍 MAP
